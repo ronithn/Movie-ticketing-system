@@ -853,6 +853,10 @@ let STATE = {
   movie:    {title:'',poster:'',show_time:'',synopsis:'',director:'',cast:'',duration:'',language:'',genre:''},
   bookings: []
 };
+// Expose the same object to window so the Firebase module listeners
+// (which assign to window.STATE.bookings / window.STATE.movie) update the
+// very object the render() code reads.
+window.STATE = STATE;
 function saveState(){} // no-op — Firebase handles all persistence
 
 /* ---------- FIREBASE DATA HELPERS ---------- */
