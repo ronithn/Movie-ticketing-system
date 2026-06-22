@@ -1049,7 +1049,7 @@ function renderBooking(){
   html += `<div class="hero">
     <div class="eyebrow">${hasMovie ? 'Now Showing' : 'Kerketta Auditorium'}</div>
     <h2>${hasMovie ? escapeHtml(movie.title) : 'No movie scheduled yet'}</h2>
-    ${hasMovie && movie.poster ? `<img class="poster" src="${movie.poster}" alt="Movie poster">` : ''}
+    ${hasMovie && movie.poster ? `<img class="poster" src="${escapeHtml(movie.poster)}" alt="Movie poster">` : ''}
     <p>${hasMovie && movie.synopsis ? escapeHtml(movie.synopsis) : 'Please check back soon — the administrator will upload show details.'}</p>
     ${hasMovie ? `<div class="movie-meta">
       ${movie.genre    ? `<span><b>Genre:</b> ${escapeHtml(movie.genre)}</span>`:''}
@@ -1346,7 +1346,7 @@ function renderAdmin(){
     <div class="field"><label>Synopsis</label><input id="m_synopsis" type="text" value="${escapeHtml(movie.synopsis)}" placeholder="Short description shown to viewers"></div>
     <div class="field"><label>Poster Image URL</label><input id="m_poster" type="text" value="${escapeHtml(movie.poster)}" placeholder="https://..."></div>
     <div class="field"><label>Or Upload Poster</label><input id="m_poster_file" type="file" accept="image/*"></div>
-    ${movie.poster?`<div class="preview-img-wrap"><img src="${movie.poster}" alt="poster preview"></div>`:''}
+    ${movie.poster?`<div class="preview-img-wrap"><img src="${escapeHtml(movie.poster)}" alt="poster preview"></div>`:''}
     <button class="btn" id="saveMovieBtn" style="margin-top:10px;">Save Movie Details</button>
   </div>`;
 
