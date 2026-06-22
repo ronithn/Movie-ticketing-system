@@ -1663,10 +1663,22 @@ function attachHandlers(){
   document.querySelectorAll('[data-cancel]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const ticketNo = btn.dataset.cancel;
-      if(confirm('Cancel this booking and release seats?')){
-        btn.disabled=true; btn.textContent='…';
-        try { await fbCancelBooking(ticketNo); }
-        catch(err){ alert('Could not cancel: ' + err.message); btn.disabled=false; btn.textContent='Cancel'; }
+      if(!confirm('Cancel this booking and release seats?')) return;
+      btn.disabled=true; btn.textContent='…';
+      try {
+        await fbCancelBooking(ticketNo);
+        // Success: the real-time listener removes the row and frees the seat.
+      } catch(err){
+        // Surface the failure ON the button so it can't be swallowed by a
+        // browser that is suppressing repeated dialogs. A permission-denied
+        // here means the Firestore rules don't allow admins to delete bookings.
+        console.error('Cancel failed:', err);
+        btn.disabled=false;
+        btn.textContent = (err.code === 'permission-denied') ? 'Blocked by rules' : 'Failed — retry';
+        btn.style.borderColor = '#c0392b'; btn.style.color = '#c0392b';
+        alert('Could not cancel (' + (err.code || err.message) + ').\n\n'
+            + 'If this says "permission-denied", republish your Firestore rules so the '
+            + 'bookings collection allows: allow update, delete: if request.auth != null;');
       }
     });
   });
