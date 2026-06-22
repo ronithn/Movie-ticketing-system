@@ -674,6 +674,15 @@ onSnapshot(doc(db, 'config', 'movie'), snap => {
   if(snap.exists()) window.STATE.movie = snap.data();
   if(typeof render === 'function') render();
 });
+
+// Real-time screening change-log listener (history of movies set by admin).
+// Degrades gracefully if rules for `movieLog` haven't been published yet.
+onSnapshot(collection(db, 'movieLog'), snap => {
+  window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  if(typeof render === 'function') render();
+}, err => {
+  console.warn('movieLog unavailable (add Firestore rules for it):', err.code);
+});
 </script>
 <body>
 
@@ -868,7 +877,8 @@ let selectedSlot = slotsForDate(selectedDate)[0] || '18:30';
 /* ---------- STATE (Firebase-backed, real-time) ---------- */
 let STATE = {
   movie:    {title:'',poster:'',show_time:'',synopsis:'',director:'',cast:'',duration:'',language:'',genre:''},
-  bookings: []
+  bookings: [],
+  movieLog: []   // append-only history of movies the admin has set, with timestamps
 };
 // Expose the same object to window so the Firebase module listeners
 // (which assign to window.STATE.bookings / window.STATE.movie) update the
@@ -878,8 +888,13 @@ function saveState(){} // no-op — Firebase handles all persistence
 
 /* ---------- FIREBASE DATA HELPERS ---------- */
 async function fbSaveMovie(movie){
-  const { doc, setDoc } = window.__fs;
+  const { doc, setDoc, collection, addDoc } = window.__fs;
   await setDoc(doc(window.__db, 'config', 'movie'), movie);
+  // Also append to the screening change-log so there's a permanent record of
+  // every movie that was set and when (the config doc itself is overwritten).
+  if(movie.title){
+    await addDoc(collection(window.__db, 'movieLog'), { ...movie, savedAt: new Date().toISOString() });
+  }
 }
 // A reservation's identity in this domain is the SHOW (date + slot) + the SEAT.
 // The doc id is derived from exactly that, so two reservations for different
@@ -1089,6 +1104,13 @@ function formatSlot(s){
   const ampm = h>=12 ? 'PM' : 'AM';
   const h12 = ((h+11)%12)+1;
   return `${h12}:${pad2(min)} ${ampm}`;
+}
+
+function formatLogDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return escapeHtml(iso);
+  return d.toLocaleString('en-IN', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
 
 
@@ -1425,6 +1447,24 @@ function renderAdmin(){
     }).join('')}
     </table>
   </div>`;
+
+  // Screening log — permanent history of every movie the admin has set.
+  const log = (STATE.movieLog||[]).slice().sort((a,b)=>(b.savedAt||'').localeCompare(a.savedAt||''));
+  html += `<div class="panel"><h3>Screening Log (${log.length})</h3>
+    <p class="note" style="margin-bottom:12px;">A record of every movie set via this panel, newest first.</p>`;
+  if(log.length===0){
+    html += `<div class="empty-state">No movies logged yet. Saving a movie above adds an entry here.</div>`;
+  } else {
+    html += `<table><tr><th>Set On</th><th>Title</th><th>Genre</th><th>Language</th></tr>
+      ${log.map(m=>`<tr>
+        <td>${formatLogDate(m.savedAt)}</td>
+        <td>${escapeHtml(m.title)}</td>
+        <td>${escapeHtml(m.genre)||'—'}</td>
+        <td>${escapeHtml(m.language)||'—'}</td>
+      </tr>`).join('')}
+    </table>`;
+  }
+  html += `</div>`;
 
   // Bookings table with date filter — group per-seat reservations into tickets.
   const filterDate = window._adminDateFilter || dateKey(selectedDate);
