@@ -861,6 +861,17 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 function pad2(n){ return String(n).padStart(2,'0'); }
 function dateKey(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
 function slotsForDate(d){ return WEEKLY_SCHEDULE[d.getDay()] || []; }
+// The screening week runs Friday → Thursday. Returns the date-key of the Friday
+// that starts the week containing the given date (a Date or a 'YYYY-MM-DD' string).
+function weekStartKey(d){
+  const date = (typeof d === 'string')
+    ? new Date(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10))
+    : new Date(d);
+  date.setHours(0,0,0,0);
+  const daysFromFriday = (date.getDay() - 5 + 7) % 7;
+  date.setDate(date.getDate() - daysFromFriday);
+  return dateKey(date);
+}
 
 let selectedDate = new Date();
 selectedDate.setHours(0,0,0,0);
@@ -906,20 +917,31 @@ function seatDocId(showDate, slot, seat){ return `${showDate}_${slot}_${seat}`; 
 // rules allow create only when the doc does not already exist, so if any seat
 // was taken in the meantime the whole batch is rejected — no partial bookings,
 // no double-booking.
-async function fbAddBooking(reservations){
+// Write all seats of a booking plus a per-week lock for the mobile number, all
+// atomically. The lock id is `${weekStart}_${mobile}`; the rules allow creating
+// it only when it doesn't exist (no update), so a second booking by the same
+// number in the same week makes this batch fail — enforcing one booking/number/week.
+async function fbAddBooking(reservations, lock){
   const { doc, writeBatch } = window.__fs;
   const batch = writeBatch(window.__db);
   reservations.forEach(r => batch.set(doc(window.__db, 'bookings', r.id), r.data));
+  if(lock) batch.set(doc(window.__db, 'weekLocks', lock.id), lock.data);
   await batch.commit();
 }
 
-// Cancelling a ticket releases every seat that shares its ticketNo.
+// Cancelling a ticket releases every seat that shares its ticketNo, and frees the
+// number's weekly lock so they may book again that week.
 async function fbCancelBooking(ticketNo){
   const { doc, writeBatch } = window.__fs;
-  const ids = [...new Set(STATE.bookings.filter(r => r.ticketNo === ticketNo).map(r => r.id))];
+  const rs = STATE.bookings.filter(r => r.ticketNo === ticketNo);
+  const ids = [...new Set(rs.map(r => r.id))];
   if(!ids.length) return;
   const batch = writeBatch(window.__db);
   ids.forEach(id => batch.delete(doc(window.__db, 'bookings', id)));
+  const f = rs[0];
+  if(f && f.mobile && f.showDate){
+    batch.delete(doc(window.__db, 'weekLocks', `${weekStartKey(f.showDate)}_${f.mobile}`));
+  }
   await batch.commit();
 }
 
@@ -1577,8 +1599,16 @@ function attachHandlers(){
         render();
         return;
       }
-      const ticketNo = genTicketId();
       const showDate = dateKey(selectedDate);
+      const weekStart = weekStartKey(showDate);
+      // One booking per mobile number per Fri–Thu week. Friendly pre-check; the
+      // atomic week-lock below is the real guard against races/direct writes.
+      if(STATE.bookings.some(r => r.mobile === mobile && weekStartKey(r.showDate) === weekStart)){
+        alert('This mobile number already has a booking for this week.\n'
+            + 'Only one booking per number is allowed per week (Fri–Thu).');
+        return;
+      }
+      const ticketNo = genTicketId();
       const slot = selectedSlot;
       const showDateLabel = `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
       const movie = STATE.movie.title;
@@ -1588,13 +1618,15 @@ function attachHandlers(){
         id: seatDocId(showDate, slot, seat),
         data: { showDate, slot, category: selectedCategory, seat, ticketNo, name, mobile, movie, showDateLabel, bookedAt }
       }));
+      // Per-week lock for this mobile number (one booking per number per week).
+      const lock = { id: `${weekStart}_${mobile}`, data: { mobile, weekStart, ticketNo, showDate, bookedAt } };
       // Booking object (grouped) used for the on-screen ticket and the PDF.
       const booking = { ticketNo, category: selectedCategory, seats: [...selectedSeats],
                         name, mobile, slot, showDate, showDateLabel, movie, date: bookedAt };
       confirmBtn.disabled = true;
       confirmBtn.textContent = 'Saving…';
       try {
-        await fbAddBooking(reservations);
+        await fbAddBooking(reservations, lock);
         window._lastBooking = booking;
         // Optimistically reflect the new seats so occupancy updates instantly.
         reservations.forEach(r => { if(!STATE.bookings.find(x=>x.id===r.id)) STATE.bookings.push({...r.data, id:r.id}); });
@@ -1604,11 +1636,12 @@ function attachHandlers(){
         </div>` + renderTicket(booking);
         setTimeout(()=>downloadTicket(ticketNo), 600);
       } catch(err){
-        // A permission error here usually means a seat was just taken (its doc
-        // already exists, so the create is rejected) — or the Firestore rules
-        // haven't been published yet.
-        alert('Could not complete booking. One or more seats may have just been '
-            + 'taken — please reselect and try again.\n\n(' + err.message + ')');
+        // A permission error here means the atomic batch was rejected: either a
+        // seat was just taken, or this number already booked this week, or the
+        // Firestore rules haven't been published yet.
+        alert('Could not complete booking. Either one of your seats was just '
+            + 'taken, or this mobile number already has a booking this week. '
+            + 'Please check and try again.\n\n(' + (err.code || err.message) + ')');
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'Confirm & Get Ticket';
         render();
