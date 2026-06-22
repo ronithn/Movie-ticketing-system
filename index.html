@@ -558,8 +558,16 @@ footer{
     overflow-x:auto;
     -webkit-overflow-scrolling:touch;
     border-radius:8px;
+    /* Align to start (not center) so wide rows scroll from the left edge
+       instead of having their left half clipped and unreachable. */
+    justify-content:start;
+    justify-items:start;
   }
-  .seat-row{justify-content:flex-start; min-width:max-content;}
+  .seat-row, .ors-row{
+    justify-content:flex-start;
+    width:max-content;
+    min-width:100%;        /* fill the card when a row is narrow, expand when wide */
+  }
   .seat{width:22px; height:22px; font-size:.5rem; border-radius:3px 3px 7px 7px;}
   .row-label{width:18px; font-size:.65rem;}
 
