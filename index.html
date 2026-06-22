@@ -607,7 +607,8 @@ footer{
 <script type="module">
 import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc,
-         onSnapshot, addDoc, deleteDoc, setDoc }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+         onSnapshot, addDoc, deleteDoc, setDoc,
+         writeBatch }                                 from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword,
          signOut, onAuthStateChanged }                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
@@ -627,7 +628,7 @@ const auth = getAuth(app);
 // Expose to main script
 window.__db   = db;
 window.__auth = auth;
-window.__fs   = { collection, doc, onSnapshot, addDoc, deleteDoc, setDoc };
+window.__fs   = { collection, doc, onSnapshot, addDoc, deleteDoc, setDoc, writeBatch };
 window.__fbAuth = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
 window.__firebaseReady = true;
 
@@ -640,9 +641,25 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// Real-time bookings listener
+// Real-time bookings listener.
+// STATE.bookings is normalised to a flat list of per-seat reservations. New
+// docs are already per-seat; any legacy per-booking docs (with a `seats` array)
+// are expanded in memory so the two shapes can coexist during the transition.
 onSnapshot(collection(db, 'bookings'), snap => {
-  window.STATE.bookings = snap.docs.map(d => ({...d.data(), id: d.id}));
+  const out = [];
+  snap.docs.forEach(d => {
+    const data = d.data();
+    if (Array.isArray(data.seats)) {
+      data.seats.forEach(seat => out.push({
+        id: d.id, showDate: data.showDate, slot: data.slot, category: data.category,
+        seat, ticketNo: data.ticketNo || d.id, name: data.name, mobile: data.mobile,
+        movie: data.movie, showDateLabel: data.showDateLabel, bookedAt: data.date || data.bookedAt
+      }));
+    } else {
+      out.push({ ...data, id: d.id });
+    }
+  });
+  window.STATE.bookings = out;
   if(typeof render === 'function') render();
   const el = null;
   if(el){ el.textContent='🟢 Live'; el.className='sync-status live'; }
@@ -864,36 +881,70 @@ async function fbSaveMovie(movie){
   const { doc, setDoc } = window.__fs;
   await setDoc(doc(window.__db, 'config', 'movie'), movie);
 }
-async function fbAddBooking(booking){
-  const { doc, setDoc } = window.__fs;
-  await setDoc(doc(window.__db, 'bookings', booking.id), booking);
+// A reservation's identity in this domain is the SHOW (date + slot) + the SEAT.
+// The doc id is derived from exactly that, so two reservations for different
+// shows/seats can never collide, and two people grabbing the same seat for the
+// same show map to the same doc id (the second create is rejected by the rules).
+function seatDocId(showDate, slot, seat){ return `${showDate}_${slot}_${seat}`; }
+
+// Write all seats of one booking atomically. Each op is a create; the security
+// rules allow create only when the doc does not already exist, so if any seat
+// was taken in the meantime the whole batch is rejected — no partial bookings,
+// no double-booking.
+async function fbAddBooking(reservations){
+  const { doc, writeBatch } = window.__fs;
+  const batch = writeBatch(window.__db);
+  reservations.forEach(r => batch.set(doc(window.__db, 'bookings', r.id), r.data));
+  await batch.commit();
 }
-async function fbCancelBooking(id){
-  const { doc, deleteDoc } = window.__fs;
-  await deleteDoc(doc(window.__db, 'bookings', id));
+
+// Cancelling a ticket releases every seat that shares its ticketNo.
+async function fbCancelBooking(ticketNo){
+  const { doc, writeBatch } = window.__fs;
+  const ids = [...new Set(STATE.bookings.filter(r => r.ticketNo === ticketNo).map(r => r.id))];
+  if(!ids.length) return;
+  const batch = writeBatch(window.__db);
+  ids.forEach(id => batch.delete(doc(window.__db, 'bookings', id)));
+  await batch.commit();
 }
 
 let currentView = 'booking';
 let selectedCategory = null;
 let selectedSeats = [];
-let ticketCounter = parseInt(localStorage.getItem('kerketta_ticket_counter')||'0');
 
 /* ---------- HELPERS ---------- */
+// STATE.bookings is a flat list of per-seat reservation docs, each of the form
+// { id, showDate, slot, category, seat, ticketNo, name, mobile, ... }.
 function seatId(cat, row, n){ return cat+'-'+row+n; }
 function seatLabel(sid){
   const dash = sid.indexOf('-');
   return sid.slice(dash+1);
 }
 function isBooked(seatID){
-  return STATE.bookings.some(b => b.showDate===dateKey(selectedDate) && b.slot===selectedSlot && b.seats.includes(seatID));
+  return STATE.bookings.some(r => r.showDate===dateKey(selectedDate) && r.slot===selectedSlot && r.seat===seatID);
 }
 function bookedCountFor(catKey){
-  return STATE.bookings.filter(b=>b.showDate===dateKey(selectedDate) && b.slot===selectedSlot && b.category===catKey).reduce((s,b)=>s+b.seats.length,0);
+  return STATE.bookings.filter(r=>r.showDate===dateKey(selectedDate) && r.slot===selectedSlot && r.category===catKey).length;
 }
+// Re-assemble the per-seat reservations of one ticket back into a single
+// booking object (used by the ticket view and PDF).
+function bookingFromTicketNo(ticketNo){
+  const rs = STATE.bookings.filter(r => r.ticketNo === ticketNo);
+  if(!rs.length) return null;
+  const f = rs[0];
+  return {
+    ticketNo, category:f.category, name:f.name, mobile:f.mobile, slot:f.slot,
+    showDate:f.showDate, showDateLabel:f.showDateLabel, movie:f.movie,
+    seats: rs.map(r=>r.seat), date:f.bookedAt
+  };
+}
+// A globally-unique, human-readable ticket number. It is only a label printed
+// on the ticket — it is NOT used as a storage key — so a per-device counter is
+// no longer needed (which is what used to collide across devices).
 function genTicketId(){
-  ticketCounter++;
-  localStorage.setItem('kerketta_ticket_counter', ticketCounter);
-  return 'KA-' + new Date().getFullYear() + '-' + String(ticketCounter).padStart(4,'0');
+  const rand = (self.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/[^A-Za-z0-9]/g,'')
+                 : Math.random().toString(36).slice(2)).toUpperCase();
+  return 'KA-' + new Date().getFullYear() + '-' + rand.slice(0,5);
 }
 
 /* ---------- ADMIN AUTH (Firebase Authentication) ---------- */
@@ -1215,7 +1266,10 @@ function renderTicket(booking){
 }
 
 function downloadTicket(ticketNo){
-  const booking = STATE.bookings.find(b=>b.ticketNo===ticketNo);
+  // Prefer the freshly-made booking (cached) in case the snapshot hasn't
+  // round-tripped yet; otherwise rebuild it from the seat reservations.
+  const booking = (window._lastBooking && window._lastBooking.ticketNo===ticketNo)
+                    ? window._lastBooking : bookingFromTicketNo(ticketNo);
   if(!booking) return;
   const cat = FLAT_CATS.find(c=>c.key===booking.category);
   const seatsStr = booking.seats.map(s=>seatLabel(s)).join(', ');
@@ -1372,30 +1426,34 @@ function renderAdmin(){
     </table>
   </div>`;
 
-  // Bookings table with date filter
+  // Bookings table with date filter — group per-seat reservations into tickets.
   const filterDate = window._adminDateFilter || dateKey(selectedDate);
-  const filtered = STATE.bookings.filter(b=>b.showDate===filterDate);
-  html += `<div class="panel"><h3>Bookings for ${filterDate} (${filtered.length})</h3>
+  const reservations = STATE.bookings.filter(r=>r.showDate===filterDate);
+  const groups = {};
+  reservations.forEach(r=>{ (groups[r.ticketNo] ||= []).push(r); });
+  const tickets = Object.values(groups);
+  html += `<div class="panel"><h3>Bookings for ${filterDate} (${tickets.length})</h3>
     <div class="field" style="max-width:240px;"><label>View bookings for date</label>
       <input type="date" id="adminDateFilter" value="${filterDate}">
     </div>`;
-  if(filtered.length===0){
+  if(tickets.length===0){
     html += `<div class="empty-state">No bookings yet for this date.</div>`;
   } else {
     html += `<table><tr>
       <th>Ticket No.</th><th>Slot</th><th>Category</th><th>Name</th><th>Mobile No.</th><th>Seat(s)</th><th>Booked at</th><th></th>
     </tr>`;
-    filtered.slice().reverse().forEach(b=>{
+    tickets.forEach(rs=>{
+      const b = rs[0];
       const cat = FLAT_CATS.find(c=>c.key===b.category);
       html += `<tr>
-        <td style="font-family:monospace;font-weight:700;">${b.ticketNo||b.id}</td>
+        <td style="font-family:monospace;font-weight:700;">${b.ticketNo}</td>
         <td>${formatSlot(b.slot)}</td>
         <td>${cat.name}</td>
         <td>${escapeHtml(b.name)}</td>
         <td>${escapeHtml(b.mobile)}</td>
-        <td>${b.seats.map(s=>seatLabel(s)).join(', ')}</td>
-        <td>${b.date}</td>
-        <td><button class="btn secondary" style="padding:4px 10px;font-size:.75rem;" data-cancel="${b.id}">Cancel</button></td>
+        <td>${rs.map(r=>seatLabel(r.seat)).join(', ')}</td>
+        <td>${b.bookedAt}</td>
+        <td><button class="btn secondary" style="padding:4px 10px;font-size:.75rem;" data-cancel="${b.ticketNo}">Cancel</button></td>
       </tr>`;
     });
     html += `</table>`;
@@ -1480,32 +1538,40 @@ function attachHandlers(){
         return;
       }
       const ticketNo = genTicketId();
-      const booking = {
-        id: ticketNo,
-        ticketNo,
-        category: selectedCategory,
-        seats: [...selectedSeats],
-        name, mobile,
-        slot: selectedSlot,
-        showDate: dateKey(selectedDate),
-        showDateLabel: `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`,
-        movie: STATE.movie.title,
-        date: new Date().toLocaleString('en-IN', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})
-      };
+      const showDate = dateKey(selectedDate);
+      const slot = selectedSlot;
+      const showDateLabel = `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
+      const movie = STATE.movie.title;
+      const bookedAt = new Date().toLocaleString('en-IN', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      // One reservation document per seat, keyed by show + seat.
+      const reservations = selectedSeats.map(seat => ({
+        id: seatDocId(showDate, slot, seat),
+        data: { showDate, slot, category: selectedCategory, seat, ticketNo, name, mobile, movie, showDateLabel, bookedAt }
+      }));
+      // Booking object (grouped) used for the on-screen ticket and the PDF.
+      const booking = { ticketNo, category: selectedCategory, seats: [...selectedSeats],
+                        name, mobile, slot, showDate, showDateLabel, movie, date: bookedAt };
       confirmBtn.disabled = true;
       confirmBtn.textContent = 'Saving…';
       try {
-        await fbAddBooking(booking);
-        if(!STATE.bookings.find(b=>b.id===booking.id)) STATE.bookings.push(booking);
+        await fbAddBooking(reservations);
+        window._lastBooking = booking;
+        // Optimistically reflect the new seats so occupancy updates instantly.
+        reservations.forEach(r => { if(!STATE.bookings.find(x=>x.id===r.id)) STATE.bookings.push({...r.data, id:r.id}); });
         document.getElementById('app').innerHTML = `<div class="hero" style="padding-top:8px;">
           <div class="eyebrow">Booking Confirmed</div>
           <h2>Your Ticket</h2>
         </div>` + renderTicket(booking);
         setTimeout(()=>downloadTicket(ticketNo), 600);
       } catch(err){
-        alert('Booking failed: ' + err.message + '\nPlease try again.');
+        // A permission error here usually means a seat was just taken (its doc
+        // already exists, so the create is rejected) — or the Firestore rules
+        // haven't been published yet.
+        alert('Could not complete booking. One or more seats may have just been '
+            + 'taken — please reselect and try again.\n\n(' + err.message + ')');
         confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Confirm Booking';
+        confirmBtn.textContent = 'Confirm & Get Ticket';
+        render();
       }
     });
   }
@@ -1553,13 +1619,14 @@ function attachHandlers(){
     });
   }
 
-  // admin: cancel booking
+  // admin: cancel booking (releases every seat sharing this ticket number)
   document.querySelectorAll('[data-cancel]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.cancel;
+      const ticketNo = btn.dataset.cancel;
       if(confirm('Cancel this booking and release seats?')){
         btn.disabled=true; btn.textContent='…';
-        await fbCancelBooking(id);
+        try { await fbCancelBooking(ticketNo); }
+        catch(err){ alert('Could not cancel: ' + err.message); btn.disabled=false; btn.textContent='Cancel'; }
       }
     });
   });
