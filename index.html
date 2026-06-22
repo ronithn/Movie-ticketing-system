@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kerketta Auditorium — Ticket Booking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#241b16;
+  --paper:#f8f3ea;
+  --paper-deep:#efe6d6;
+  --gold:#c79a3e;
+  --gold-deep:#a87f2c;
+  --maroon:#5c1320;
+  --maroon-deep:#430c16;
+  --green:#3a6b4e;
+  --line:#e2d6c0;
+  --seat-empty:#efe7d8;
+  --seat-sel:#c79a3e;
+  --seat-booked:#bdb6aa;
+  --font-display:'Playfair Display', Georgia, serif;
+  --font-body:'Outfit', Arial, sans-serif;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  font-family:var(--font-body);
+  background:var(--paper);
+  background-image:
+    linear-gradient(180deg, var(--paper-deep) 0, var(--paper) 220px);
+  color:var(--ink);
+  min-height:100vh;
+}
+header{
+  background:var(--maroon);
+  background-image:linear-gradient(135deg, var(--maroon) 0%, var(--maroon-deep) 100%);
+  color:var(--paper);
+  padding:20px 28px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:10px;
+  border-bottom:3px solid var(--gold);
+}
+header h1{
+  font-family:var(--font-display);
+  font-size:1.7rem;
+  letter-spacing:1.5px;
+  font-weight:600;
+}
+header h1 span{color:var(--gold);}
+nav{display:flex; gap:10px;}
+nav button{
+  background:transparent;
+  border:1px solid var(--gold);
+  color:var(--gold);
+  padding:9px 20px;
+  font-family:var(--font-body);
+  font-size:0.8rem;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  cursor:pointer;
+  border-radius:3px;
+  transition:.2s;
+}
+nav button:hover, nav button.active{
+  background:var(--gold);
+  color:var(--maroon-deep);
+  border-color:var(--gold);
+}
+main{max-width:1040px; margin:0 auto; padding:32px 24px;}
+.hero{
+  text-align:center;
+  padding:36px 20px 40px;
+  margin-bottom:34px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:10px;
+  position:relative;
+}
+.hero::before{
+  content:'';
+  position:absolute; top:0; left:50%; transform:translateX(-50%);
+  width:60px; height:3px; background:var(--gold);
+}
+.hero .eyebrow{
+  font-size:.72rem;
+  letter-spacing:4px;
+  text-transform:uppercase;
+  color:var(--gold-deep);
+  margin-bottom:8px;
+  font-weight:600;
+}
+.hero h2{
+  font-family:var(--font-display);
+  font-size:2.6rem;
+  margin-bottom:10px;
+  color:var(--maroon-deep);
+  font-weight:600;
+}
+.hero p{color:#5b5048; max-width:600px; margin:0 auto; line-height:1.6;}
+.movie-meta{
+  display:flex; gap:10px; flex-wrap:wrap; justify-content:center;
+  font-size:.78rem; color:#6b5f54; margin-top:16px;
+}
+.movie-meta span{
+  border:1px solid var(--line);
+  background:var(--paper);
+  padding:5px 12px;
+  border-radius:20px;
+}
+.movie-meta span b{color:var(--maroon); font-weight:600;}
+.cast-line{font-size:.85rem; color:#6b5f54; margin-top:12px; max-width:600px; margin-left:auto; margin-right:auto;}
+.hero .poster{
+  margin:18px auto 0;
+  display:block;
+  max-height:300px;
+  border-radius:6px;
+  box-shadow:0 12px 28px rgba(67,12,22,.18);
+  border:4px solid #fff;
+  outline:1px solid var(--line);
+}
+
+/* Category cards */
+.cats{display:flex; gap:16px; flex-wrap:wrap; justify-content:center; margin-bottom:36px;}
+.cat-card{
+  flex:1 1 220px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-top:3px solid var(--maroon);
+  border-radius:8px;
+  padding:22px;
+  text-align:center;
+  cursor:pointer;
+  transition:.2s;
+  position:relative;
+}
+.cat-card:hover{transform:translateY(-3px); box-shadow:0 8px 20px rgba(67,12,22,.1);}
+.cat-card.active{border-top-color:var(--gold); box-shadow:0 0 0 2px var(--gold) inset;}
+.cat-card .tag{
+  font-family:var(--font-display);
+  font-size:1.5rem;
+  margin-bottom:4px;
+  color:var(--maroon-deep);
+  font-weight:600;
+}
+.cat-card .full-name{font-size:.8rem; color:#8a7d70; margin-bottom:12px; letter-spacing:.5px;}
+.cat-card .avail{
+  font-size:.8rem; color:var(--green); font-weight:600;
+  letter-spacing:.5px; text-transform:uppercase;
+}
+
+/* Seat map */
+.screen-label{
+  text-align:center;
+  margin:14px auto 32px;
+  padding:10px;
+  background:linear-gradient(180deg, var(--maroon-deep), transparent);
+  color:var(--paper);
+  font-size:.72rem;
+  letter-spacing:5px;
+  text-transform:uppercase;
+  font-weight:600;
+  border-radius:50% 50% 0 0 / 100% 100% 0 0;
+  width:55%;
+  max-width:420px;
+}
+.seat-grid{
+  display:grid;
+  gap:7px;
+  justify-content:center;
+  margin-bottom:24px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:24px 16px;
+  overflow-x:auto;
+}
+.seat-row{display:flex; gap:5px; align-items:center; justify-content:center;}
+.row-label{
+  width:22px; text-align:center; font-size:.72rem; color:var(--gold-deep); font-weight:700;
+}
+.seat{
+  width:26px; height:26px;
+  border-radius:4px 4px 9px 9px;
+  background:var(--seat-empty);
+  border:1px solid var(--line);
+  cursor:pointer;
+  font-size:.6rem;
+  display:flex; align-items:center; justify-content:center;
+  color:#a8998a;
+  transition:.15s;
+}
+.seat:hover{background:#f1e3c4; border-color:var(--gold);}
+.seat.selected{background:var(--gold); border-color:var(--gold-deep); color:#fff; transform:scale(1.05);}
+.seat.booked{background:var(--seat-booked); border-color:#a8a098; color:#fff; cursor:not-allowed;}
+.legend{display:flex; gap:20px; justify-content:center; font-size:.78rem; color:#6b5f54; margin-bottom:24px; flex-wrap:wrap;}
+.legend span{display:inline-flex; align-items:center; gap:6px;}
+.legend i{width:15px; height:15px; border-radius:3px 3px 5px 5px; display:inline-block; border:1px solid var(--line);}
+.legend .e{background:var(--seat-empty);}
+.legend .s{background:var(--gold); border-color:var(--gold-deep);}
+.legend .b{background:var(--seat-booked); border-color:#a8a098;}
+.aisle{ width:14px; }
+
+/* ORS 3-column layout */
+.ors-row{
+  display:flex; align-items:center; gap:6px; justify-content:center;
+  width:100%;
+}
+.ors-block{
+  display:flex; flex-wrap:nowrap; gap:3px; align-items:center;
+}
+.ors-left, .ors-right{ flex-shrink:0; }
+.ors-centre{
+  display:flex; flex-wrap:nowrap; gap:3px; justify-content:center;
+  flex-shrink:0;
+}
+.seat.ghost{
+  background:transparent; border-color:transparent; cursor:default; pointer-events:none;
+}
+/* Scale seats smaller for ORS to fit on screen */
+.seat-grid .ors-row .seat{
+  width:22px; height:22px; font-size:.55rem; border-radius:3px 3px 6px 6px;
+}
+@media(max-width:760px){
+  .seat-grid .ors-row .seat{ width:16px; height:16px; font-size:.45rem; }
+  .ors-block{ gap:2px; }
+  .ors-row{ gap:4px; }
+}
+
+/* Form */
+.booking-form{
+  background:#fff;
+  border:1px solid var(--line);
+  border-top:3px solid var(--maroon);
+  border-radius:8px;
+  padding:26px;
+  max-width:480px;
+  margin:0 auto 40px;
+}
+.booking-form h3{font-family:var(--font-display); margin-bottom:16px; font-size:1.25rem; color:var(--maroon-deep); font-weight:600;}
+.field{margin-bottom:14px;}
+.field label{display:block; font-size:.75rem; color:#8a7d70; margin-bottom:5px; letter-spacing:1px; text-transform:uppercase; font-weight:600;}
+.field input{
+  width:100%; padding:11px 13px;
+  border:1px solid var(--line);
+  border-radius:5px;
+  font-family:var(--font-body);
+  font-size:.95rem;
+  background:var(--paper);
+  color:var(--ink);
+}
+.field input:focus{outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold);}
+.summary{
+  background:var(--paper);
+  border:1px dashed var(--gold);
+  padding:12px 14px;
+  border-radius:5px;
+  font-size:.9rem;
+  margin-bottom:16px;
+}
+.summary b{color:var(--maroon);}
+.btn{
+  width:100%;
+  padding:13px;
+  background:var(--maroon);
+  background-image:linear-gradient(135deg, var(--maroon) 0%, var(--maroon-deep) 100%);
+  color:var(--paper);
+  border:none;
+  border-radius:5px;
+  font-size:.95rem;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  font-weight:600;
+  cursor:pointer;
+  font-family:var(--font-body);
+  transition:.2s;
+}
+.btn:hover{box-shadow:0 4px 14px rgba(92,19,32,.3);}
+.btn:disabled{background:var(--seat-booked); background-image:none; cursor:not-allowed; box-shadow:none;}
+.btn.secondary{
+  background:transparent;
+  background-image:none;
+  border:1px solid var(--maroon);
+  color:var(--maroon);
+  margin-top:10px;
+}
+.btn.secondary:hover{background:var(--maroon); color:var(--paper); box-shadow:none;}
+
+/* Ticket */
+.ticket-wrap{display:flex; justify-content:center; padding:20px;}
+.ticket{
+  width:100%; max-width:480px;
+  background:#fff;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 14px 36px rgba(67,12,22,.18);
+  position:relative;
+  border:1px solid var(--line);
+}
+.ticket-top{
+  background:var(--maroon);
+  background-image:linear-gradient(135deg, var(--maroon) 0%, var(--maroon-deep) 100%);
+  color:var(--paper);
+  padding:22px 26px;
+  position:relative;
+}
+.ticket-top h2{font-family:var(--font-display); font-size:1.6rem; margin-bottom:3px; font-weight:600;}
+.ticket-top .sub{font-size:.78rem; opacity:.85; letter-spacing:2px; text-transform:uppercase;}
+.ticket-top .gold-line{
+  position:absolute; bottom:0; left:0; right:0; height:4px; background:var(--gold);
+}
+.ticket-body{padding:24px 26px;}
+.ticket-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px;
+}
+.ticket-grid .full{grid-column:1/-1;}
+.ticket-grid .k{font-size:.68rem; text-transform:uppercase; letter-spacing:1.5px; color:#a8998a; margin-bottom:4px; font-weight:600;}
+.ticket-grid .v{font-family:var(--font-display); font-size:1.2rem; color:var(--ink); font-weight:600;}
+.seat-badge{
+  display:inline-block;
+  background:var(--gold);
+  color:var(--maroon-deep);
+  font-family:var(--font-display);
+  font-size:1.2rem;
+  font-weight:600;
+  padding:6px 16px;
+  border-radius:6px;
+  margin:2px;
+}
+.tear{
+  border-top:2px dashed var(--line);
+  margin:0 26px;
+  position:relative;
+}
+.tear::before, .tear::after{
+  content:''; position:absolute; top:-11px; width:22px; height:22px;
+  background:var(--paper); border-radius:50%;
+}
+.tear::before{left:-37px;}
+.tear::after{right:-37px;}
+.ticket-foot{
+  padding:18px 26px 24px;
+  display:flex; justify-content:space-between; align-items:center; gap:10px;
+}
+.ticket-foot .status{
+  background:var(--green); color:#fff; font-size:.72rem; letter-spacing:2px;
+  text-transform:uppercase; padding:7px 14px; border-radius:20px; font-weight:600;
+}
+.ticket-foot .id{font-size:.75rem; color:#a8998a; letter-spacing:.5px;}
+
+/* Admin */
+.admin-grid{display:grid; gap:24px;}
+.panel{
+  background:#fff; border:1px solid var(--line); border-left:4px solid var(--maroon); border-radius:8px; padding:24px;
+}
+.panel h3{font-family:var(--font-display); margin-bottom:16px; font-size:1.25rem; color:var(--maroon-deep); font-weight:600;}
+table{width:100%; border-collapse:collapse; font-size:.85rem;}
+th, td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line);}
+th{background:var(--paper); font-size:.68rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--gold-deep); font-weight:700;}
+tr:hover td{background:var(--paper);}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.note{font-size:.8rem; color:#a8998a; margin-top:6px;}
+.empty-state{text-align:center; color:#a8998a; padding:34px; font-size:.9rem; border:1px dashed var(--line); border-radius:6px;}
+
+.admin-header-bar{
+  display:flex; justify-content:space-between; align-items:center;
+  background:#fff; border:1px solid var(--line); border-left:4px solid var(--gold);
+  border-radius:8px; padding:14px 20px; margin-bottom:18px;
+  font-family:var(--font-display); font-size:1rem; color:var(--maroon-deep); font-weight:600;
+}
+.slot-selector{
+  background:#fff; border:1px solid var(--line); border-radius:10px;
+  padding:18px 22px; margin-bottom:24px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+}
+.slot-label{ font-size:.75rem; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--gold-deep); white-space:nowrap; }
+.slot-btns{ display:flex; gap:10px; flex-wrap:wrap; }
+.slot-btn{
+  background:transparent; border:1px solid var(--maroon); color:var(--maroon);
+  padding:8px 22px; border-radius:4px; font-family:var(--font-body); font-size:.85rem;
+  font-weight:600; cursor:pointer; letter-spacing:.5px; transition:.18s;
+}
+.slot-btn:hover{ background:var(--maroon); color:#fff; }
+.slot-btn.active{ background:var(--maroon); color:#fff; border-color:var(--maroon); }
+.admin-header-bar .slot-btn{ border-color:var(--gold); color:var(--gold-deep); font-size:.78rem; padding:6px 14px; }
+.admin-header-bar .slot-btn.active{ background:var(--gold); color:var(--maroon-deep); }
+
+/* Week strip */
+.week-strip{
+  display:grid; grid-template-columns:repeat(7,1fr); gap:8px;
+  background:#fff; border:1px solid var(--line); border-radius:10px;
+  padding:14px 16px; margin-bottom:18px;
+}
+.week-day{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:10px 4px; border-radius:8px; border:1.5px solid transparent;
+  cursor:pointer; transition:.15s; background:var(--paper); text-align:center;
+}
+.week-day:hover:not(.closed):not(.past){ border-color:var(--gold); background:#fdf8ee; }
+.week-day.selected{ border-color:var(--gold); background:#fdf3dc; box-shadow:0 0 0 1.5px var(--gold); }
+.week-day.today .wd-num{ text-decoration:underline; }
+.week-day.closed,.week-day.past{ opacity:.42; cursor:not-allowed; }
+.wd-name{ font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--gold-deep); }
+.wd-num{ font-family:var(--font-display); font-size:1.3rem; font-weight:600; color:var(--ink); line-height:1; }
+.wd-tag{ font-size:.6rem; color:var(--green); font-weight:600; letter-spacing:.5px; }
+.week-day.closed .wd-tag,.week-day.past .wd-tag{ color:#c0392b; }
+.closed-note{ font-size:.85rem; color:#c0392b; }
+.vip-row{
+  display:flex; align-items:center; justify-content:center; gap:5px; flex-wrap:wrap;
+  margin-bottom:14px;
+}
+.vip-label{ font-size:.7rem; font-weight:700; color:var(--gold-deep); margin-right:6px; letter-spacing:1px; }
+.vip-sofa{
+  width:22px; height:16px; border-radius:6px 6px 3px 3px;
+  background:var(--maroon); opacity:.55;
+}
+.vip-note{ font-size:.68rem; color:#a8998a; margin-left:8px; }
+@media (max-width:600px){
+  .week-strip{ gap:4px; padding:10px 8px; }
+  .week-day{ padding:8px 2px; }
+  .wd-num{ font-size:1rem; }
+  .wd-tag{ font-size:.55rem; }
+}
+@media (max-width:600px){
+  .slot-selector{ padding:14px 14px; gap:10px; }
+  .slot-btn{ padding:7px 16px; font-size:.8rem; }
+}
+.screen-wrapper{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+}
+.preview-img-wrap{margin-top:10px;}
+.preview-img-wrap img{max-height:120px; border-radius:6px; border:1px solid var(--line);}
+
+footer{
+  text-align:center; padding:32px; font-size:.78rem; color:#a8998a;
+  letter-spacing:1px; margin-top:24px;
+}
+/* ── Admin Login Modal ── */
+.modal-overlay{
+  display:none;
+  position:fixed; inset:0; z-index:999;
+  background:rgba(36,27,22,.55);
+  backdrop-filter:blur(3px);
+  align-items:center; justify-content:center;
+}
+.modal-overlay.open{ display:flex; }
+.modal-box{
+  background:#fff;
+  border-radius:12px;
+  padding:36px 32px;
+  width:100%; max-width:380px;
+  box-shadow:0 20px 50px rgba(67,12,22,.28);
+  border-top:4px solid var(--gold);
+  position:relative;
+  animation:popIn .18s ease;
+}
+@keyframes popIn{from{transform:scale(.92);opacity:0;}to{transform:scale(1);opacity:1;}}
+.modal-box h2{
+  font-family:var(--font-display);
+  color:var(--maroon-deep);
+  font-size:1.4rem;
+  margin-bottom:6px;
+  font-weight:600;
+}
+.modal-box .modal-sub{
+  font-size:.78rem; color:#a8998a; margin-bottom:22px; letter-spacing:.5px;
+}
+.modal-box .field{ margin-bottom:16px; }
+.modal-close{
+  position:absolute; top:14px; right:16px;
+  background:none; border:none; font-size:1.3rem;
+  color:#a8998a; cursor:pointer; line-height:1;
+}
+.modal-close:hover{ color:var(--maroon); }
+.modal-error{
+  display:none;
+  background:#fdf0f2; border:1px solid #f0c0c8;
+  color:var(--maroon); font-size:.8rem;
+  padding:9px 12px; border-radius:5px;
+  margin-bottom:14px; border-radius:5px;
+}
+.modal-error.show{ display:block; }
+.admin-badge{
+  display:inline-block;
+  background:var(--gold);
+  color:var(--maroon-deep);
+  font-size:.65rem; font-weight:700;
+  letter-spacing:1.5px; text-transform:uppercase;
+  padding:3px 8px; border-radius:10px;
+  margin-left:6px; vertical-align:middle;
+}
+.modal-success{
+  display:none;
+  background:#f0fdf4; border:1px solid #a7f3c0;
+  color:#166534; font-size:.82rem;
+  padding:9px 12px; border-radius:5px;
+  margin-bottom:14px; font-weight:600;
+}
+.modal-success.show{ display:block; }
+@media print{
+  header, nav, footer, .btn{display:none !important;}
+  body{background:#fff; background-image:none;}
+}
+
+/* ── Tablet (≤768px) ── */
+@media (max-width: 768px){
+  main{padding:20px 16px;}
+  .hero{padding:28px 16px 32px;}
+  .hero h2{font-size:2.1rem;}
+  .cats{gap:12px;}
+  .cat-card{flex:1 1 160px; padding:16px;}
+  .seat-grid{padding:18px 10px; overflow-x:auto;}
+  .admin-grid{gap:18px;}
+  .panel{padding:18px;}
+  .row2{grid-template-columns:1fr 1fr;}
+  table{font-size:.78rem;}
+  th, td{padding:8px 8px;}
+  .ticket-grid{gap:12px;}
+  .booking-form{padding:20px;}
+}
+
+/* ── Mobile (≤600px) ── */
+@media (max-width: 600px){
+  /* Header */
+  header{padding:12px 14px; gap:8px;}
+  header h1{font-size:1.1rem; letter-spacing:.8px;}
+  nav{gap:6px;}
+  nav button{padding:7px 12px; font-size:.72rem; letter-spacing:.8px;}
+
+  /* Main layout */
+  main{padding:14px 12px;}
+
+  /* Hero */
+  .hero{padding:22px 14px 26px; margin-bottom:20px; border-radius:8px;}
+  .hero h2{font-size:1.6rem; margin-bottom:8px;}
+  .hero p{font-size:.88rem;}
+  .hero .poster{max-height:200px;}
+  .movie-meta{gap:6px; margin-top:12px;}
+  .movie-meta span{font-size:.72rem; padding:4px 10px;}
+  .cast-line{font-size:.8rem;}
+
+  /* Category cards – stack vertically */
+  .cats{flex-direction:column; gap:10px; margin-bottom:24px;}
+  .cat-card{flex:unset; width:100%; display:flex; align-items:center; gap:14px; text-align:left; padding:14px 16px;}
+  .cat-card .tag{font-size:1.2rem; margin-bottom:0; min-width:52px;}
+  .cat-card .full-name{margin-bottom:0; flex:1;}
+  .cat-card .avail{white-space:nowrap;}
+
+  /* Screen label */
+  .screen-label{width:70%; font-size:.65rem; letter-spacing:3px; margin-bottom:20px;}
+
+  /* Seat map – scrollable on small screens */
+  .seat-grid{
+    padding:14px 10px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    border-radius:8px;
+  }
+  .seat-row{justify-content:flex-start; min-width:max-content;}
+  .seat{width:22px; height:22px; font-size:.5rem; border-radius:3px 3px 7px 7px;}
+  .row-label{width:18px; font-size:.65rem;}
+
+  /* Legend */
+  .legend{gap:12px; font-size:.73rem; margin-bottom:18px;}
+
+  /* Booking form */
+  .booking-form{padding:16px; max-width:100%; margin-bottom:28px;}
+  .booking-form h3{font-size:1.1rem; margin-bottom:12px;}
+  .field input{padding:10px 11px; font-size:.9rem;}
+  .field label{font-size:.7rem;}
+  .btn{padding:12px; font-size:.88rem; letter-spacing:1px;}
+
+  /* Ticket */
+  .ticket-wrap{padding:12px;}
+  .ticket{border-radius:10px;}
+  .ticket-top{padding:18px 18px;}
+  .ticket-top h2{font-size:1.3rem;}
+  .ticket-body{padding:18px 18px;}
+  .ticket-grid{grid-template-columns:1fr 1fr; gap:10px;}
+  .ticket-grid .v{font-size:1rem;}
+  .seat-badge{font-size:1rem; padding:5px 12px;}
+  .ticket-foot{padding:14px 18px 18px; flex-wrap:wrap; gap:8px;}
+  .ticket-foot .status{font-size:.68rem; padding:6px 12px;}
+  .ticket-foot .id{font-size:.7rem;}
+  .tear::before{left:-29px;}
+  .tear::after{right:-29px;}
+
+  /* Admin */
+  .admin-grid{gap:14px;}
+  .panel{padding:14px; border-radius:6px;}
+  .panel h3{font-size:1.05rem; margin-bottom:12px;}
+  .row2{grid-template-columns:1fr;}
+  table{font-size:.76rem; display:block; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  th, td{padding:7px 8px; white-space:nowrap;}
+  .empty-state{padding:22px; font-size:.85rem;}
+
+  /* Footer */
+  footer{padding:22px 14px; font-size:.72rem;}
+}
+
+#syncStatus{display:none !important;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script type="module">
+import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, doc,
+         onSnapshot, addDoc, deleteDoc, setDoc }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInWithEmailAndPassword,
+         signOut, onAuthStateChanged }                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyB2TKi_-iZwcjDacVP7klSR49y4g2xS3aQ",
+  authDomain:        "kerketta-auditorium-ed527.firebaseapp.com",
+  projectId:         "kerketta-auditorium-ed527",
+  storageBucket:     "kerketta-auditorium-ed527.firebasestorage.app",
+  messagingSenderId: "372598897035",
+  appId:             "1:372598897035:web:83ca15edcf2a8f92c0578e"
+};
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+// Expose to main script
+window.__db   = db;
+window.__auth = auth;
+window.__fs   = { collection, doc, onSnapshot, addDoc, deleteDoc, setDoc };
+window.__fbAuth = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
+window.__firebaseReady = true;
+
+// Auth state → update admin button & panel
+onAuthStateChanged(auth, user => {
+  window.__adminUser = user || null;
+  if(typeof updateAdminBtn === 'function') updateAdminBtn();
+  if(!user && typeof currentView !== 'undefined' && currentView === 'admin'){
+    switchView('booking');
+  }
+});
+
+// Real-time bookings listener
+onSnapshot(collection(db, 'bookings'), snap => {
+  window.STATE.bookings = snap.docs.map(d => ({...d.data(), id: d.id}));
+  if(typeof render === 'function') render();
+  const el = null;
+  if(el){ el.textContent='🟢 Live'; el.className='sync-status live'; }
+}, err => {
+  console.error('Bookings error:', err);
+  const el = null;
+  if(el){ el.textContent='🔴 Offline'; el.className='sync-status offline'; }
+});
+
+// Real-time movie config listener
+onSnapshot(doc(db, 'config', 'movie'), snap => {
+  if(snap.exists()) window.STATE.movie = snap.data();
+  if(typeof render === 'function') render();
+});
+</script>
+<body>
+
+<header>
+  <h1>Kerketta <span>Auditorium</span></h1>
+  <div style="display:flex;align-items:center;gap:10px;">
+    
+    <nav>
+      <button class="active" data-view="booking" onclick="switchView('booking')" id="bookingNavBtn">Book Tickets</button>
+      <button data-view="admin" onclick="openAdminLogin()" id="adminNavBtn">&#128274; Admin</button>
+    </nav>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer>Kerketta Auditorium · Offline ticket confirmation · No online payment required</footer>
+
+<!-- Admin Login Modal -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeAdminLogin()" title="Close">&times;</button>
+    <h2>Admin Login</h2>
+    <p class="modal-sub">Sign in with your admin email and password.</p>
+    <div class="modal-error" id="loginError">Incorrect email or password. Please try again.</div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="adminEmailInput" placeholder="admin@kerketta.mil.in" onkeydown="if(event.key==='Enter')document.getElementById('adminPasswordInput').focus()">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="adminPasswordInput" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')submitAdminLogin()">
+    </div>
+    <button class="btn" id="loginBtn" onclick="submitAdminLogin()">Login</button>
+  </div>
+</div>
+
+
+
+<script>
+/* ---------- CONFIG / DATA ---------- */
+// Seating layout based on physical auditorium chart.
+// OFFRs (yellow) = 58 total: Centre block rows L-R
+// JCOs (blue) = 116 total: Two sections (Left & Right) of 58 seats each, rows L-R
+// ORs (pink) = 366 total: Left block + Right block (rows A-K, 10 seats each = 220) + Centre tapering block (146)
+// VIP = 11 sofa seats, front row, NOT bookable — display only
+
+const CATEGORIES = [
+  {
+    key:'OFFRS', name:'OFFRs', full:'Officers',
+    note:'Rows M–R · Centre section (Row L is VIP, not bookable)',
+    blocks:[
+      {label:'Centre', row:'M', from:1, to:10}, // 10
+      {label:'Centre', row:'N', from:1, to:10}, // 10
+      {label:'Centre', row:'O', from:1, to:10}, // 10
+      {label:'Centre', row:'P', from:1, to:10}, // 10
+      {label:'Centre', row:'Q', from:1, to:9},  // 9
+      {label:'Centre', row:'R', from:1, to:9},  // 9  --> total = 58
+    ]
+  },
+  {
+    key:'JCOS', name:'JCOs', full:'Junior Commissioned Officers',
+    note:'Rows L–R · Two sections of 58 seats each, continuous numbering',
+    // Per row: left section seats 1..N, right section continues from N+1
+    // Rows L,M: 9 left + 9 right = 18 per row (section total 9×2 + 8×5 = 58... recount below)
+    // Distribution: rows L,M = 9 per section; rows N,O,P,Q,R = 8 per section -> 2×9 + 5×8 = 58 per section ✓
+    blocks:[
+      // LEFT section
+      {label:'Left', row:'L', from:1,  to:9},  // 9
+      {label:'Left', row:'M', from:1,  to:9},  // 9
+      {label:'Left', row:'N', from:1,  to:8},  // 8
+      {label:'Left', row:'O', from:1,  to:8},  // 8
+      {label:'Left', row:'P', from:1,  to:8},  // 8
+      {label:'Left', row:'Q', from:1,  to:8},  // 8
+      {label:'Left', row:'R', from:1,  to:8},  // 8  → left = 58
+      // RIGHT section — numbering continues from left (L:10-18, M:10-18, N:9-16, O-R:9-16)
+      {label:'Right', row:'L', from:10, to:18}, // 9
+      {label:'Right', row:'M', from:10, to:18}, // 9
+      {label:'Right', row:'N', from:9,  to:16}, // 8
+      {label:'Right', row:'O', from:9,  to:16}, // 8
+      {label:'Right', row:'P', from:9,  to:16}, // 8
+      {label:'Right', row:'Q', from:9,  to:16}, // 8
+      {label:'Right', row:'R', from:9,  to:16}, // 8  → right = 58, total = 116
+    ]
+  },
+  {
+    key:'ORS', name:'ORs', full:'Other Ranks',
+    note:'Rows A–K · Closest to screen · Continuous seat numbering across all blocks',
+    blocks:[
+      // Left block: all rows, seats 1-10
+      {label:'Left',   rows:['A','B','C','D','E','F','G','H','I','J','K'], from:1,  to:10},
+      // Centre tapering block: starts at 11, ends vary by row
+      {label:'Centre', row:'K', from:11, to:26}, // 16 → Right: 27-36
+      {label:'Centre', row:'J', from:11, to:26}, // 16 → Right: 27-36
+      {label:'Centre', row:'I', from:11, to:26}, // 16 → Right: 27-36
+      {label:'Centre', row:'H', from:11, to:25}, // 15 → Right: 26-35
+      {label:'Centre', row:'G', from:11, to:23}, // 13 → Right: 24-33
+      {label:'Centre', row:'F', from:11, to:23}, // 13 → Right: 24-33
+      {label:'Centre', row:'E', from:11, to:22}, // 12 → Right: 23-32
+      {label:'Centre', row:'D', from:11, to:22}, // 12 → Right: 23-32
+      {label:'Centre', row:'C', from:11, to:21}, // 11 → Right: 22-31
+      {label:'Centre', row:'B', from:11, to:21}, // 11 → Right: 22-31
+      {label:'Centre', row:'A', from:11, to:21}, // 11 → Right: 22-31
+      // Right block: continues from centre-end+1 per row (10 seats each)
+      {label:'Right',  row:'K', from:27, to:36},
+      {label:'Right',  row:'J', from:27, to:36},
+      {label:'Right',  row:'I', from:27, to:36},
+      {label:'Right',  row:'H', from:26, to:35},
+      {label:'Right',  row:'G', from:24, to:33},
+      {label:'Right',  row:'F', from:24, to:33},
+      {label:'Right',  row:'E', from:23, to:32},
+      {label:'Right',  row:'D', from:23, to:32},
+      {label:'Right',  row:'C', from:22, to:31},
+      {label:'Right',  row:'B', from:22, to:31},
+      {label:'Right',  row:'A', from:22, to:31},
+    ]
+  },
+  {
+    key:'VIP', name:'VIP', full:'VIP Sofas (not bookable)',
+    note:'Front row · Display only',
+    blocks:[
+      {label:'VIP', row:'VIP', from:1, to:11}
+    ]
+  }
+];
+
+// Flatten CATEGORIES into a simple structure the rest of the app uses
+// For ORS we also store per-row block info so the seat map can render 3 columns
+function buildFlatCategories(){
+  return CATEGORIES.map(cat=>{
+    const rowMap = {};
+    cat.blocks.forEach(blk=>{
+      const rowList = blk.rows || [blk.row];
+      rowList.forEach(r=>{
+        if(!rowMap[r]) rowMap[r] = {all:new Set(), blocks:[]};
+        const bseats = [];
+        for(let s=blk.from; s<=blk.to; s++){ rowMap[r].all.add(s); bseats.push(s); }
+        rowMap[r].blocks.push({label:blk.label, seats:bseats});
+      });
+    });
+    let rowOrder;
+    if(cat.key==='ORS')        rowOrder = ['A','B','C','D','E','F','G','H','I','J','K'];
+    else if(cat.key==='OFFRS'||cat.key==='JCOS') rowOrder = ['L','M','N','O','P','Q','R'];
+    else rowOrder = ['VIP'];
+    const rows = rowOrder
+      .filter(r=>rowMap[r] && rowMap[r].all.size>0)
+      .map(r=>({
+        label:r,
+        seats:[...rowMap[r].all].sort((a,b)=>a-b),
+        blocks: rowMap[r].blocks
+      }));
+    const total = rows.reduce((s,r)=>s+r.seats.length,0);
+    return {key:cat.key, name:cat.name, full:cat.full, note:cat.note||'', rows, total, bookable:cat.key!=='VIP'};
+  });
+}
+const FLAT_CATS = buildFlatCategories();
+// Bookable categories only (VIP excluded from booking flow)
+const BOOKABLE_CATS = FLAT_CATS.filter(c=>c.bookable);
+
+/* ---------- WEEKLY SCHEDULE ---------- */
+// 0=Sunday ... 6=Saturday (JS Date.getDay())
+// Thursday (4) is closed for maintenance.
+// Sunday (0) has two shows; all other open days have one evening show.
+const WEEKLY_SCHEDULE = {
+  0: ['14:30', '18:30'], // Sunday
+  1: ['18:30'],          // Monday
+  2: ['18:30'],          // Tuesday
+  3: ['18:30'],          // Wednesday
+  4: [],                 // Thursday — closed for maintenance
+  5: ['18:30'],          // Friday
+  6: ['18:30'],          // Saturday
+};
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function pad2(n){ return String(n).padStart(2,'0'); }
+function dateKey(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function slotsForDate(d){ return WEEKLY_SCHEDULE[d.getDay()] || []; }
+
+let selectedDate = new Date();
+selectedDate.setHours(0,0,0,0);
+// If today is closed (Thursday) or has no slots, jump to next open day
+(function(){
+  let tries=0;
+  while(slotsForDate(selectedDate).length===0 && tries<8){
+    selectedDate.setDate(selectedDate.getDate()+1);
+    tries++;
+  }
+})();
+let selectedSlot = slotsForDate(selectedDate)[0] || '18:30';
+
+/* ---------- STATE (Firebase-backed, real-time) ---------- */
+let STATE = {
+  movie:    {title:'',poster:'',show_time:'',synopsis:'',director:'',cast:'',duration:'',language:'',genre:''},
+  bookings: []
+};
+function saveState(){} // no-op — Firebase handles all persistence
+
+/* ---------- FIREBASE DATA HELPERS ---------- */
+async function fbSaveMovie(movie){
+  const { doc, setDoc } = window.__fs;
+  await setDoc(doc(window.__db, 'config', 'movie'), movie);
+}
+async function fbAddBooking(booking){
+  const { doc, setDoc } = window.__fs;
+  await setDoc(doc(window.__db, 'bookings', booking.id), booking);
+}
+async function fbCancelBooking(id){
+  const { doc, deleteDoc } = window.__fs;
+  await deleteDoc(doc(window.__db, 'bookings', id));
+}
+
+let currentView = 'booking';
+let selectedCategory = null;
+let selectedSeats = [];
+let ticketCounter = parseInt(localStorage.getItem('kerketta_ticket_counter')||'0');
+
+/* ---------- HELPERS ---------- */
+function seatId(cat, row, n){ return cat+'-'+row+n; }
+function seatLabel(sid){
+  const dash = sid.indexOf('-');
+  return sid.slice(dash+1);
+}
+function isBooked(seatID){
+  return STATE.bookings.some(b => b.showDate===dateKey(selectedDate) && b.slot===selectedSlot && b.seats.includes(seatID));
+}
+function bookedCountFor(catKey){
+  return STATE.bookings.filter(b=>b.showDate===dateKey(selectedDate) && b.slot===selectedSlot && b.category===catKey).reduce((s,b)=>s+b.seats.length,0);
+}
+function genTicketId(){
+  ticketCounter++;
+  localStorage.setItem('kerketta_ticket_counter', ticketCounter);
+  return 'KA-' + new Date().getFullYear() + '-' + String(ticketCounter).padStart(4,'0');
+}
+
+/* ---------- ADMIN AUTH (Firebase Authentication) ---------- */
+window.__adminUser = null;
+let adminLoggedIn = false;
+
+function openAdminLogin(){
+  if(window.__adminUser){ adminLoggedIn=true; switchView('admin'); return; }
+  document.getElementById('adminModal').classList.add('open');
+  setTimeout(()=>document.getElementById('adminEmailInput').focus(), 80);
+}
+function closeAdminLogin(){
+  document.getElementById('adminModal').classList.remove('open');
+  document.getElementById('adminPasswordInput').value='';
+  document.getElementById('loginError').classList.remove('show');
+}
+async function submitAdminLogin(){
+  const email = document.getElementById('adminEmailInput').value.trim();
+  const pwd   = document.getElementById('adminPasswordInput').value;
+  const btn   = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  errEl.classList.remove('show');
+  btn.disabled=true; btn.textContent='Signing in…';
+  try {
+    const { signInWithEmailAndPassword } = window.__fbAuth;
+    await signInWithEmailAndPassword(window.__auth, email, pwd);
+    adminLoggedIn = true;
+    closeAdminLogin();
+    switchView('admin');
+    updateAdminBtn();
+  } catch(e){
+    errEl.classList.add('show');
+    document.getElementById('adminPasswordInput').value='';
+    document.getElementById('adminPasswordInput').focus();
+  } finally {
+    btn.disabled=false; btn.textContent='Login';
+  }
+}
+async function logoutAdmin(){
+  const { signOut } = window.__fbAuth;
+  await signOut(window.__auth);
+  adminLoggedIn = false;
+  window.__adminUser = null;
+  updateAdminBtn();
+  switchView('booking');
+}
+function updateAdminBtn(){
+  const btn = document.getElementById('adminNavBtn');
+  if(!btn) return;
+  if(window.__adminUser || adminLoggedIn){
+    btn.innerHTML = '&#128275; Admin <span class="admin-badge">Live</span>';
+    btn.onclick = ()=>switchView('admin');
+  } else {
+    btn.innerHTML = '&#128274; Admin';
+    btn.onclick = openAdminLogin;
+  }
+}
+// Stubs — change password now done via Firebase Console
+function openChangePwd(){}
+function closeChangePwd(){}
+function submitChangePwd(){}
+
+/* ---------- VIEW SWITCH ---------- */
+function switchView(v){
+  if(v === 'admin' && !adminLoggedIn){ openAdminLogin(); return; }
+  currentView = v;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  selectedCategory = null; selectedSeats = [];
+  render();
+}
+
+/* ---------- RENDER ROOT ---------- */
+function render(){
+  const app = document.getElementById('app');
+  if(currentView === 'booking') app.innerHTML = renderBooking();
+  else app.innerHTML = renderAdmin();
+  attachHandlers();
+}
+
+/* ---------- CALENDAR ---------- */
+function getWeekDays(){
+  // Returns 7 Date objects: from this Friday to next Thursday
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = today.getDay(); // 0=Sun..6=Sat
+  // days until Friday: Fri=5, so offset = (5 - dow + 7) % 7, if 0 stay at today's Friday
+  let offset = (5 - dow + 7) % 7;
+  // If today is already Fri/Sat/Sun/Mon/Tue/Wed/Thu within the current Fri-Thu week
+  // We always show the CURRENT Fri-Thu window that contains today
+  // Find most recent Friday
+  const daysFromFriday = (dow - 5 + 7) % 7; // 0 if today is Friday
+  const friday = new Date(today); friday.setDate(today.getDate() - daysFromFriday);
+  return Array.from({length:7}, (_,i)=>{ const d=new Date(friday); d.setDate(friday.getDate()+i); return d; });
+}
+
+function renderCalendar(){
+  const days = getWeekDays();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let html = `<div class="week-strip">`;
+  days.forEach(d=>{
+    const key = dateKey(d);
+    const slots = slotsForDate(d);
+    const isPast = d < today;
+    const isClosed = slots.length === 0;
+    const isSelected = key === dateKey(selectedDate);
+    const isToday = key === dateKey(today);
+    let cls = 'week-day';
+    if(isClosed) cls += ' closed';
+    if(isPast) cls += ' past';
+    if(isSelected) cls += ' selected';
+    if(isToday) cls += ' today';
+    const clickable = !isPast && !isClosed;
+    html += `<div class="${cls}" ${clickable ? `data-date="${key}"` : ''}>
+      <div class="wd-name">${DAY_SHORT[d.getDay()]}</div>
+      <div class="wd-num">${d.getDate()}</div>
+      <div class="wd-tag">${isClosed ? 'Closed' : slots.length===2 ? '2 Shows' : '1 Show'}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Slot buttons for selected date
+  const slots = slotsForDate(selectedDate);
+  const selD = selectedDate;
+  html += `<div class="slot-selector">
+    <div class="slot-label">${DAY_NAMES[selD.getDay()]}, ${selD.getDate()} ${MONTH_NAMES[selD.getMonth()]} ${selD.getFullYear()}</div>
+    <div class="slot-btns">`;
+  if(slots.length === 0){
+    html += `<span class="closed-note">Closed — Theatre maintenance day.</span>`;
+  } else {
+    slots.forEach(s => {
+      html += `<button class="slot-btn ${selectedSlot===s?'active':''}" data-slot="${s}">${formatSlot(s)}</button>`;
+    });
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function formatSlot(s){
+  // "18:30" -> "6:30 PM"
+  const [h,min] = s.split(':').map(Number);
+  const ampm = h>=12 ? 'PM' : 'AM';
+  const h12 = ((h+11)%12)+1;
+  return `${h12}:${pad2(min)} ${ampm}`;
+}
+
+
+function renderBooking(){
+  const movie = STATE.movie;
+  const hasMovie = !!(movie && movie.title && movie.title.trim());
+  let html = '';
+
+  html += `<div class="hero">
+    <div class="eyebrow">${hasMovie ? 'Now Showing' : 'Kerketta Auditorium'}</div>
+    <h2>${hasMovie ? escapeHtml(movie.title) : 'No movie scheduled yet'}</h2>
+    ${hasMovie && movie.poster ? `<img class="poster" src="${movie.poster}" alt="Movie poster">` : ''}
+    <p>${hasMovie && movie.synopsis ? escapeHtml(movie.synopsis) : 'Please check back soon — the administrator will upload show details.'}</p>
+    ${hasMovie ? `<div class="movie-meta">
+      ${movie.genre    ? `<span><b>Genre:</b> ${escapeHtml(movie.genre)}</span>`:''}
+      ${movie.duration ? `<span><b>Duration:</b> ${escapeHtml(movie.duration)}</span>`:''}
+      ${movie.language ? `<span><b>Language:</b> ${escapeHtml(movie.language)}</span>`:''}
+      ${movie.director ? `<span><b>Director:</b> ${escapeHtml(movie.director)}</span>`:''}
+    </div>` : ''}
+    ${hasMovie && movie.cast ? `<p class="cast-line"><b>Cast:</b> ${escapeHtml(movie.cast)}</p>`:''}
+  </div>`;
+
+  // Calendar + show-time selector
+  html += renderCalendar();
+
+  html += `<div class="cats">`;
+  BOOKABLE_CATS.forEach(c=>{
+    const booked = bookedCountFor(c.key);
+    const avail = c.total - booked;
+    html += `<div class="cat-card ${selectedCategory===c.key?'active':''}" data-cat="${c.key}">
+      <div class="tag">${c.name}</div>
+      <div class="full-name">${c.full}</div>
+      <div class="avail">${avail} / ${c.total} available</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  if(selectedCategory){
+    const cat = FLAT_CATS.find(c=>c.key===selectedCategory);
+    html += `<div class="screen-wrapper"><div class="screen-label">◀ SCREEN ▶</div></div>`;
+    const vip = FLAT_CATS.find(c=>c.key==='VIP');
+    if(vip){
+      html += `<div class="vip-row"><span class="vip-label">VIP</span>`;
+      vip.rows[0].seats.forEach(()=>{
+        html += `<div class="vip-sofa"></div>`;
+      });
+      html += `<span class="vip-note">(not for booking)</span></div>`;
+    }
+    html += `<div class="seat-grid">`;
+
+    if(cat.key === 'ORS'){
+      // ORS: render each row as 3 columns — Left (1-10) | Centre (tapering) | Right (27-36)
+      // Find the widest centre block to normalise alignment
+      const maxCentre = Math.max(...cat.rows.map(r=>{
+        const cb = r.blocks.find(b=>b.label==='Centre');
+        return cb ? cb.seats.length : 0;
+      }));
+      cat.rows.forEach(r=>{
+        const leftB   = r.blocks.find(b=>b.label==='Left')   || {seats:[]};
+        const centreB = r.blocks.find(b=>b.label==='Centre') || {seats:[]};
+        const rightB  = r.blocks.find(b=>b.label==='Right')  || {seats:[]};
+        html += `<div class="seat-row ors-row">`;
+        html += `<span class="row-label">${r.label}</span>`;
+        // Left block
+        html += `<div class="ors-block ors-left">`;
+        leftB.seats.forEach(n=>{
+          const sid=seatId(cat.key,r.label,n), booked=isBooked(sid), sel=selectedSeats.includes(sid);
+          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
+        });
+        html += `</div>`;
+        // Centre block — pad with ghost seats to keep max-width consistent
+        const padLeft  = Math.floor((maxCentre - centreB.seats.length)/2);
+        const padRight = maxCentre - centreB.seats.length - padLeft;
+        html += `<div class="ors-block ors-centre">`;
+        for(let p=0;p<padLeft;p++)  html += `<div class="seat ghost"></div>`;
+        centreB.seats.forEach(n=>{
+          const sid=seatId(cat.key,r.label,n), booked=isBooked(sid), sel=selectedSeats.includes(sid);
+          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
+        });
+        for(let p=0;p<padRight;p++) html += `<div class="seat ghost"></div>`;
+        html += `</div>`;
+        // Right block — continuous from centre-end+1
+        html += `<div class="ors-block ors-right">`;
+        rightB.seats.forEach(n=>{
+          const sid=seatId(cat.key,r.label,n), booked=isBooked(sid), sel=selectedSeats.includes(sid);
+          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
+        });
+        html += `</div>`;
+        html += `<span class="row-label">${r.label}</span>`;
+        html += `</div>`;
+      });
+
+    } else {
+      // Standard: OFFRS and JCOS
+      cat.rows.forEach(r=>{
+        html += `<div class="seat-row"><span class="row-label">${r.label}</span>`;
+        r.seats.forEach(n=>{
+          const sid = seatId(cat.key, r.label, n);
+          const booked = isBooked(sid);
+          const sel = selectedSeats.includes(sid);
+          // For JCOs: insert visual aisle between left and right sections
+          if(cat.key==='JCOS'){
+            const leftEnd = (r.label==='L'||r.label==='M') ? 9 : 8;
+            if(n === leftEnd+1) html += `<div class="aisle"></div>`;
+          }
+          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
+        });
+        html += `</div>`;
+      });
+    }
+    html += `</div>`;
+
+    html += `<div class="legend">
+      <span><i class="e"></i> Available</span>
+      <span><i class="s"></i> Selected</span>
+      <span><i class="b"></i> Booked</span>
+    </div>`;
+
+    html += renderBookingForm(cat);
+  }
+
+  return html;
+}
+
+function renderBookingForm(cat){
+  const seatsLabel = selectedSeats.length ? selectedSeats.map(s=>seatLabel(s)).join(', ') : 'None selected';
+  return `<div class="booking-form">
+    <h3>Booking Details — ${cat.name}</h3>
+    <div class="summary">
+      Show: <b>${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()} — ${formatSlot(selectedSlot)}</b> &nbsp;|&nbsp;
+      Selected seats: <b>${seatsLabel}</b> &nbsp;|&nbsp;
+      Count: <b>${selectedSeats.length}</b>
+    </div>
+    <div class="field"><label>Name</label><input id="f_name" type="text" placeholder="Full name"></div>
+    <div class="field"><label>Mobile No.</label><input id="f_mobile" type="tel" placeholder="e.g. 9876543210" maxlength="10" pattern="[0-9]{10}"></div>
+    <button class="btn" id="confirmBtn" ${selectedSeats.length===0?'disabled':''}>Confirm &amp; Get Ticket</button>
+  </div>`;
+}
+
+/* ---------- TICKET VIEW ---------- */
+function renderTicket(booking){
+  const cat = FLAT_CATS.find(c=>c.key===booking.category);
+  const seatsHtml = booking.seats.map(s=>`<span class="seat-badge">${seatLabel(s)}</span>`).join('');
+  return `<div class="ticket-wrap"><div class="ticket">
+    <div class="ticket-top">
+      <h2>${escapeHtml(booking.movie) || 'Movie Night'}</h2>
+      <div class="sub">${cat.full} · Kerketta Auditorium</div>
+      <div class="gold-line"></div>
+    </div>
+    <div class="ticket-body">
+      <div class="ticket-grid">
+        <div><div class="k">Ticket No.</div><div class="v" style="color:var(--maroon);font-weight:700;">${booking.ticketNo}</div></div>
+        <div><div class="k">Show Date</div><div class="v">${escapeHtml(booking.showDateLabel)}</div></div>
+        <div><div class="k">Show Time</div><div class="v">${formatSlot(booking.slot)}</div></div>
+        <div><div class="k">Category</div><div class="v">${cat.name}</div></div>
+        <div><div class="k">Name</div><div class="v">${escapeHtml(booking.name)}</div></div>
+        <div><div class="k">Mobile No.</div><div class="v">${escapeHtml(booking.mobile)}</div></div>
+        <div class="full"><div class="k">Seat(s)</div><div class="v">${seatsHtml}</div></div>
+      </div>
+      <div style="font-size:.72rem;color:#a8998a;letter-spacing:.5px;">Booked on ${booking.date}</div>
+    </div>
+    <div class="tear"></div>
+    <div class="ticket-foot">
+      <span class="status">✓ Confirmed</span>
+      <span class="id">${booking.ticketNo}</span>
+    </div>
+  </div></div>
+  <div class="ticket-wrap" style="padding-top:0;">
+    <div style="max-width:480px; width:100%;">
+      <button class="btn" onclick="downloadTicket('${booking.ticketNo}')">⬇ Download Ticket (PDF)</button>
+      <button class="btn" onclick="window.print()">🖨 Print Ticket</button>
+      <button class="btn secondary" onclick="selectedCategory=null;selectedSeats=[];switchView('booking')">Book Another</button>
+    </div>
+  </div>`;
+}
+
+function downloadTicket(ticketNo){
+  const booking = STATE.bookings.find(b=>b.ticketNo===ticketNo);
+  if(!booking) return;
+  const cat = FLAT_CATS.find(c=>c.key===booking.category);
+  const seatsStr = booking.seats.map(s=>seatLabel(s)).join(', ');
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:[120,180] });
+  const maroon = [92,19,32];
+  const maroonDeep = [67,12,22];
+  const gold = [199,154,62];
+  const ink = [36,27,22];
+  const grey = [168,153,138];
+  const green = [58,107,78];
+  const W = 120, H = 180;
+
+  // header band
+  doc.setFillColor(...maroonDeep);
+  doc.rect(0,0,W,34,'F');
+  doc.setFillColor(...gold);
+  doc.rect(0,34,W,1.5,'F');
+  doc.setTextColor(248,243,234);
+  doc.setFont('times','bold');
+  doc.setFontSize(16);
+  doc.text(booking.movie || 'Movie Night', W/2, 14, {align:'center', maxWidth:W-12});
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.setTextColor(199,154,62);
+  doc.text(('KERKETTA AUDITORIUM · ' + cat.full).toUpperCase(), W/2, 24, {align:'center'});
+
+  // body
+  let y = 46;
+  doc.setTextColor(...ink);
+  const field = (label, value)=>{
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...grey);
+    doc.text(label.toUpperCase(), 10, y);
+    doc.setFont('times','bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...ink);
+    doc.text(String(value), 10, y+5.5);
+    y += 14;
+  };
+  doc.setTextColor(...maroon);
+  field('Ticket No.', booking.ticketNo);
+  doc.setTextColor(...ink);
+  field('Show Date', booking.showDateLabel || booking.showDate);
+  field('Show Time', formatSlot(booking.slot));
+  field('Category', cat.name + ' — ' + cat.full);
+  field('Name', booking.name);
+  field('Mobile No.', booking.mobile);
+
+  // seats
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(7);
+  doc.setTextColor(...grey);
+  doc.text('SEAT(S)', 10, y);
+  y += 6;
+  let x = 10;
+  doc.setFont('times','bold');
+  doc.setFontSize(12);
+  booking.seats.forEach(s=>{
+    const label = seatLabel(s);
+    const w = doc.getTextWidth(label) + 8;
+    if(x + w > W-10){ x = 10; y += 11; }
+    doc.setFillColor(...gold);
+    doc.roundedRect(x, y-6, w, 9, 1.5, 1.5, 'F');
+    doc.setTextColor(...maroonDeep);
+    doc.text(label, x + w/2, y, {align:'center'});
+    x += w + 3;
+  });
+  y += 14;
+
+  // dashed tear line
+  doc.setDrawColor(226,214,192);
+  doc.setLineDashPattern([1.5,1.5], 0);
+  doc.line(8, y, W-8, y);
+  doc.setLineDashPattern([], 0);
+  y += 10;
+
+  // footer
+  doc.setFillColor(...green);
+  doc.roundedRect(10, y-6, 32, 9, 4, 4, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('CONFIRMED', 26, y, {align:'center'});
+  doc.setTextColor(...grey);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(7);
+  doc.text('Booked: ' + booking.date, W-10, y, {align:'right'});
+
+  y += 12;
+  doc.setFontSize(6.5);
+  doc.setTextColor(...grey);
+  doc.text('Offline ticket · No online payment required · Present at gate for entry', W/2, y, {align:'center', maxWidth:W-10});
+
+  doc.save('Ticket_' + ticketNo + '.pdf');
+}
+
+/* ---------- ADMIN VIEW ---------- */
+function renderAdmin(){
+  const movie = STATE.movie;
+  let html = `<div class="admin-header-bar">
+    <span>&#128275; Admin Panel <span class="admin-badge">Logged In</span></span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn secondary" style="width:auto;padding:8px 18px;font-size:.75rem;" onclick="openChangePwd()">&#128273; Change Password</button>
+      <button class="btn secondary" style="width:auto;padding:8px 18px;font-size:.75rem;" onclick="logoutAdmin()">Logout</button>
+    </div>
+  </div>`;
+  html += `<div class="admin-grid">`;
+
+  // Movie management
+  html += `<div class="panel">
+    <h3>Current Movie / Show</h3>
+    <div class="row2">
+      <div class="field"><label>Movie Title</label><input id="m_title" type="text" value="${escapeHtml(movie.title)}" placeholder="e.g. Border"></div>
+      <div class="field"><label>Show Date</label><input id="m_time" type="text" value="${escapeHtml(movie.show_time)}" placeholder="e.g. 14 Jun 2026"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Genre</label><input id="m_genre" type="text" value="${escapeHtml(movie.genre)}" placeholder="e.g. War Drama"></div>
+      <div class="field"><label>Duration</label><input id="m_duration" type="text" value="${escapeHtml(movie.duration)}" placeholder="e.g. 2h 40m"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Language</label><input id="m_language" type="text" value="${escapeHtml(movie.language)}" placeholder="e.g. Hindi"></div>
+      <div class="field"><label>Director</label><input id="m_director" type="text" value="${escapeHtml(movie.director)}" placeholder="e.g. J.P. Dutta"></div>
+    </div>
+    <div class="field"><label>Cast</label><input id="m_cast" type="text" value="${escapeHtml(movie.cast)}" placeholder="e.g. Sunny Deol, Sunil Shetty"></div>
+    <div class="field"><label>Synopsis</label><input id="m_synopsis" type="text" value="${escapeHtml(movie.synopsis)}" placeholder="Short description shown to viewers"></div>
+    <div class="field"><label>Poster Image URL</label><input id="m_poster" type="text" value="${escapeHtml(movie.poster)}" placeholder="https://..."></div>
+    <div class="field"><label>Or Upload Poster</label><input id="m_poster_file" type="file" accept="image/*"></div>
+    ${movie.poster?`<div class="preview-img-wrap"><img src="${movie.poster}" alt="poster preview"></div>`:''}
+    <button class="btn" id="saveMovieBtn" style="margin-top:10px;">Save Movie Details</button>
+  </div>`;
+
+  // Seat availability for the currently selected show (date + slot)
+  html += `<div class="panel"><h3>Seat Availability</h3>
+    <p class="note" style="margin-bottom:12px;">For ${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()} — ${formatSlot(selectedSlot)}. Switch date/time on the Book Tickets tab to view another show.</p>
+    <table>
+      <tr><th>Category</th><th>Total</th><th>Booked</th><th>Available</th></tr>
+      ${BOOKABLE_CATS.map(c=>{
+        const booked = bookedCountFor(c.key);
+        return `<tr><td>${c.name} — ${c.full}</td><td>${c.total}</td><td>${booked}</td><td>${c.total-booked}</td></tr>`;
+      }).join('')}
+    </table>
+  </div>`;
+
+  // Weekly schedule overview
+  html += `<div class="panel"><h3>Weekly Show Schedule</h3>
+    <table><tr><th>Day</th><th>Show times</th></tr>
+    ${DAY_NAMES.map((d,i)=>{
+      const slots = WEEKLY_SCHEDULE[i];
+      return `<tr><td>${d}</td><td>${slots.length? slots.map(formatSlot).join(', ') : '<em>Closed for maintenance</em>'}</td></tr>`;
+    }).join('')}
+    </table>
+  </div>`;
+
+  // Bookings table with date filter
+  const filterDate = window._adminDateFilter || dateKey(selectedDate);
+  const filtered = STATE.bookings.filter(b=>b.showDate===filterDate);
+  html += `<div class="panel"><h3>Bookings for ${filterDate} (${filtered.length})</h3>
+    <div class="field" style="max-width:240px;"><label>View bookings for date</label>
+      <input type="date" id="adminDateFilter" value="${filterDate}">
+    </div>`;
+  if(filtered.length===0){
+    html += `<div class="empty-state">No bookings yet for this date.</div>`;
+  } else {
+    html += `<table><tr>
+      <th>Ticket No.</th><th>Slot</th><th>Category</th><th>Name</th><th>Mobile No.</th><th>Seat(s)</th><th>Booked at</th><th></th>
+    </tr>`;
+    filtered.slice().reverse().forEach(b=>{
+      const cat = FLAT_CATS.find(c=>c.key===b.category);
+      html += `<tr>
+        <td style="font-family:monospace;font-weight:700;">${b.ticketNo||b.id}</td>
+        <td>${formatSlot(b.slot)}</td>
+        <td>${cat.name}</td>
+        <td>${escapeHtml(b.name)}</td>
+        <td>${escapeHtml(b.mobile)}</td>
+        <td>${b.seats.map(s=>seatLabel(s)).join(', ')}</td>
+        <td>${b.date}</td>
+        <td><button class="btn secondary" style="padding:4px 10px;font-size:.75rem;" data-cancel="${b.id}">Cancel</button></td>
+      </tr>`;
+    });
+    html += `</table>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+/* ---------- EVENT HANDLERS ---------- */
+function attachHandlers(){
+  // calendar date select
+  document.querySelectorAll('.week-day[data-date]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const [y,m,d] = el.dataset.date.split('-').map(Number);
+      selectedDate = new Date(y, m-1, d);
+      const slots = slotsForDate(selectedDate);
+      selectedSlot = slots[0] || selectedSlot;
+      selectedSeats = [];
+      render();
+    });
+  });
+  // slot buttons (booking view)
+  document.querySelectorAll('.slot-btn[data-slot]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedSlot = el.dataset.slot;
+      selectedSeats = [];
+      render();
+    });
+  });
+
+  // admin booking date filter
+  const adminDateFilter = document.getElementById('adminDateFilter');
+  if(adminDateFilter){
+    adminDateFilter.addEventListener('change', ()=>{
+      window._adminDateFilter = adminDateFilter.value;
+      render();
+    });
+  }
+
+  // category select
+  document.querySelectorAll('.cat-card').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedCategory = el.dataset.cat;
+      selectedSeats = [];
+      render();
+    });
+  });
+
+  // seat select
+  document.querySelectorAll('.seat').forEach(el=>{
+    if(el.classList.contains('booked')) return;
+    el.addEventListener('click', ()=>{
+      const sid = el.dataset.seat;
+      if(selectedSeats.includes(sid)){
+        selectedSeats = selectedSeats.filter(s=>s!==sid);
+      } else {
+        selectedSeats.push(sid);
+      }
+      render();
+    });
+  });
+
+  // confirm booking
+  const confirmBtn = document.getElementById('confirmBtn');
+  if(confirmBtn){
+    confirmBtn.addEventListener('click', async ()=>{
+      const name = document.getElementById('f_name').value.trim();
+      const mobile = document.getElementById('f_mobile').value.trim();
+      if(!name || !mobile){
+        alert('Please fill in Name and Mobile No.');
+        return;
+      }
+      if(!/^[0-9]{10}$/.test(mobile)){
+        alert('Please enter a valid 10-digit mobile number.');
+        return;
+      }
+      const taken = selectedSeats.filter(isBooked);
+      if(taken.length){
+        alert('Some selected seats were just booked. Please reselect.');
+        selectedSeats = selectedSeats.filter(s=>!taken.includes(s));
+        render();
+        return;
+      }
+      const ticketNo = genTicketId();
+      const booking = {
+        id: ticketNo,
+        ticketNo,
+        category: selectedCategory,
+        seats: [...selectedSeats],
+        name, mobile,
+        slot: selectedSlot,
+        showDate: dateKey(selectedDate),
+        showDateLabel: `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`,
+        movie: STATE.movie.title,
+        date: new Date().toLocaleString('en-IN', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})
+      };
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Saving…';
+      try {
+        await fbAddBooking(booking);
+        if(!STATE.bookings.find(b=>b.id===booking.id)) STATE.bookings.push(booking);
+        document.getElementById('app').innerHTML = `<div class="hero" style="padding-top:8px;">
+          <div class="eyebrow">Booking Confirmed</div>
+          <h2>Your Ticket</h2>
+        </div>` + renderTicket(booking);
+        setTimeout(()=>downloadTicket(ticketNo), 600);
+      } catch(err){
+        alert('Booking failed: ' + err.message + '\nPlease try again.');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm Booking';
+      }
+    });
+  }
+
+  // admin: save movie
+  const saveMovieBtn = document.getElementById('saveMovieBtn');
+  if(saveMovieBtn){
+    saveMovieBtn.addEventListener('click', async ()=>{
+      const movie = {
+        title:     document.getElementById('m_title').value.trim(),
+        show_time: document.getElementById('m_time').value.trim(),
+        synopsis:  document.getElementById('m_synopsis').value.trim(),
+        genre:     document.getElementById('m_genre').value.trim(),
+        duration:  document.getElementById('m_duration').value.trim(),
+        language:  document.getElementById('m_language').value.trim(),
+        director:  document.getElementById('m_director').value.trim(),
+        cast:      document.getElementById('m_cast').value.trim(),
+        poster:    document.getElementById('m_poster').value.trim() || STATE.movie.poster || ''
+      };
+      saveMovieBtn.disabled=true; saveMovieBtn.textContent='Saving…';
+      try {
+        STATE.movie = movie;
+        await fbSaveMovie(movie);
+        render();
+        alert('Movie details saved and synced to all devices.');
+      } catch(err){
+        alert('Save failed: ' + err.message);
+      } finally {
+        saveMovieBtn.disabled=false; saveMovieBtn.textContent='Save Movie Details';
+      }
+    });
+  }
+  const posterFile = document.getElementById('m_poster_file');
+  if(posterFile){
+    posterFile.addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = async ()=>{
+        STATE.movie.poster = reader.result;
+        try { await fbSaveMovie(STATE.movie); } catch(e){ console.error(e); }
+        render();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // admin: cancel booking
+  document.querySelectorAll('[data-cancel]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.cancel;
+      if(confirm('Cancel this booking and release seats?')){
+        btn.disabled=true; btn.textContent='…';
+        await fbCancelBooking(id);
+      }
+    });
+  });
+}
+
+function escapeHtml(str){
+  if(!str) return '';
+  return str.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ---------- INIT ---------- */
+document.getElementById('adminModal').addEventListener('click', function(e){
+  if(e.target === this) closeAdminLogin();
+});
+render();
+</script>
+</body>
+</html>
