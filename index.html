@@ -1153,7 +1153,9 @@ function renderBooking(){
     <div class="eyebrow">${hasMovie ? 'Now Showing' : 'Kerketta Auditorium'}</div>
     <h2>${hasMovie ? escapeHtml(movie.title) : 'No movie scheduled yet'}</h2>
     ${hasMovie && movie.poster ? `<img class="poster" src="${escapeHtml(movie.poster)}" alt="Movie poster">` : ''}
-    <p>${hasMovie && movie.synopsis ? escapeHtml(movie.synopsis) : 'Please check back soon — the administrator will upload show details.'}</p>
+    ${hasMovie
+      ? (movie.synopsis ? `<p>${escapeHtml(movie.synopsis)}</p>` : '')
+      : `<p>Please check back soon — the administrator will upload show details.</p>`}
     ${hasMovie ? `<div class="movie-meta">
       ${movie.genre    ? `<span><b>Genre:</b> ${escapeHtml(movie.genre)}</span>`:''}
       ${movie.duration ? `<span><b>Duration:</b> ${escapeHtml(movie.duration)}</span>`:''}
