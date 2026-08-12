@@ -177,9 +177,9 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
   border:1px solid var(--line);
   border-radius:8px;
   padding:24px 16px;
-  overflow-x:hidden;   /* desktop/tablet: seats auto-size to fit (see fitSeats) */
+  overflow-x:hidden;
 }
-.seat-row{display:flex; gap:5px; align-items:center; justify-content:center; flex-wrap:nowrap;}
+.seat-row{display:flex; gap:var(--seat-gap, 5px); align-items:center; justify-content:center; flex-wrap:nowrap;}
 .row-label{
   width:22px; text-align:center; font-size:.72rem; color:var(--gold-deep); font-weight:700;
 }
@@ -198,13 +198,40 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .seat:hover{background:#f1e3c4; border-color:var(--gold);}
 .seat.selected{background:var(--gold); border-color:var(--gold-deep); color:#fff; transform:scale(1.05);}
 .seat.booked{background:var(--seat-booked); border-color:#a8a098; color:#fff; cursor:not-allowed;}
-.legend{display:flex; gap:20px; justify-content:center; font-size:.78rem; color:#6b5f54; margin-bottom:24px; flex-wrap:wrap;}
-.legend span{display:inline-flex; align-items:center; gap:6px;}
-.legend i{width:15px; height:15px; border-radius:3px 3px 5px 5px; display:inline-block; border:1px solid var(--line);}
+/* Legend scaled to 1.2× (font, gaps, swatch size and margin adjusted to match). */
+.legend{display:flex; gap:24px; justify-content:center; font-size:.94rem; color:#6b5f54; margin-bottom:29px; flex-wrap:wrap; padding:4px 0;}
+.legend span{display:inline-flex; align-items:center; gap:7px;}
+.legend i{width:18px; height:18px; border-radius:4px 4px 6px 6px; display:inline-block; border:1px solid var(--line);}
 .legend .e{background:var(--seat-empty);}
 .legend .s{background:var(--gold); border-color:var(--gold-deep);}
 .legend .b{background:var(--seat-booked); border-color:#a8a098;}
-.aisle{ width:14px; }
+.legend .tf{background:#e6edf7; border-color:#9db4d6;}
+.legend .ts{background:#e6f2ea; border-color:#9dccb4;}
+/* Member-type colour coding, shown only on available seats (booked/selected win). */
+.seat.t-family:not(.booked):not(.selected){ background:#e6edf7; border-color:#c3d2ea; }
+.seat.t-single:not(.booked):not(.selected){ background:#e6f2ea; border-color:#c3e2ce; }
+.seat.t-family:not(.booked):not(.selected):hover,
+.seat.t-single:not(.booked):not(.selected):hover{ background:#f1e3c4; border-color:var(--gold); }
+.aisle{ width:calc(var(--seat-gap, 5px) * 2); flex:0 0 auto; }
+/* FAMILY / SINGLE group labels under the seat map (aligned to each group). */
+.group-labels{ display:flex; align-items:stretch; gap:var(--seat-gap, 5px); flex-wrap:nowrap; width:100%; margin-top:6px; }
+.group-labels .row-label{ visibility:hidden; }
+.group-label{ text-align:center; font-family:var(--font-display); font-weight:700; letter-spacing:3px; font-size:.82rem; padding:6px 2px 0; border-top:2px solid transparent; }
+.glab-family{ color:#3a5a8f; border-top-color:#9db4d6; }
+.glab-single{ color:#2f7a66; border-top-color:#9dccb4; }
+.section-title{
+  text-align:center;
+  font-family:var(--font-display);
+  font-size:1.05rem;
+  font-weight:600;
+  color:var(--maroon-deep);
+  letter-spacing:.5px;
+  margin:6px auto 10px;
+  padding-bottom:6px;
+  border-bottom:2px solid var(--gold);
+  width:fit-content;
+  padding-left:18px; padding-right:18px;
+}
 
 /* ORS 3-column layout */
 .ors-row{
@@ -222,22 +249,9 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .seat.ghost{
   background:transparent; border-color:transparent; cursor:default; pointer-events:none;
 }
-/* Offline-reserved seats (seats 1&2 each ORs row) — maroon/dark, not selectable */
-.seat.offline-reserved{
-  background:var(--maroon); border-color:var(--maroon-deep); color:#e8d0a0;
-  cursor:not-allowed; opacity:.75;
-}
-/* Media/photographer blocked seats */
-.seat.media-blocked{
-  background:#e67e22; border-color:#c0610a; color:#fff;
-  cursor:not-allowed; opacity:.8;
-}
-/* Legend icons for new states */
-.legend .offline-res-i{ background:var(--maroon); border-color:var(--maroon-deep); }
-.legend .media-i{ background:#e67e22; border-color:#c0610a; }
-/* ORS seats: use the fit variable on desktop/tablet (fallback 22px), rounded. */
+/* Scale seats smaller for ORS to fit on screen */
 .seat-grid .ors-row .seat{
-  width:var(--seat-size, 22px); height:var(--seat-size, 22px); font-size:var(--seat-font, .55rem); border-radius:3px 3px 6px 6px;
+  width:22px; height:22px; font-size:.55rem; border-radius:3px 3px 6px 6px;
 }
 @media(max-width:760px){
   .seat-grid .ors-row .seat{ width:16px; height:16px; font-size:.45rem; }
@@ -526,7 +540,7 @@ footer{
   .hero h2{font-size:2.1rem;}
   .cats{gap:12px;}
   .cat-card{flex:1 1 160px; padding:16px;}
-  .seat-grid{padding:18px 10px; overflow-x:auto;}
+  .seat-grid{padding:18px 10px; overflow-x:hidden;}
   .admin-grid{gap:18px;}
   .panel{padding:18px;}
   .row2{grid-template-columns:1fr 1fr;}
@@ -568,25 +582,16 @@ footer{
 
   /* Seat map – scrollable on small screens */
   .seat-grid{
-    padding:14px 10px;
-    overflow-x:auto;
-    -webkit-overflow-scrolling:touch;
+    padding:14px 8px;
+    overflow-x:hidden;       /* seats auto-size to fit — no horizontal scroll */
     border-radius:8px;
-    /* Align to start (not center) so wide rows scroll from the left edge
-       instead of having their left half clipped and unreachable. */
-    justify-content:start;
-    justify-items:start;
+    justify-content:center;
   }
-  .seat-row, .ors-row{
-    justify-content:flex-start;
-    width:max-content;
-    min-width:100%;        /* fill the card when a row is narrow, expand when wide */
-  }
-  .seat{width:22px; height:22px; font-size:.5rem; border-radius:3px 3px 7px 7px;}
-  .row-label{width:18px; font-size:.65rem;}
+  .seat-row{ justify-content:center; }
+  .row-label{width:16px; font-size:.62rem;}
 
-  /* Legend */
-  .legend{gap:12px; font-size:.73rem; margin-bottom:18px;}
+  /* Legend (1.2×) */
+  .legend{gap:14px; font-size:.88rem; margin-bottom:22px;}
 
   /* Booking form */
   .booking-form{padding:16px; max-width:100%; margin-bottom:28px;}
@@ -714,7 +719,7 @@ onSnapshot(collection(db, 'movieLog'), snap => {
     
     <nav>
       <button class="active" data-view="booking" onclick="switchView('booking')" id="bookingNavBtn">Book Tickets</button>
-      <button onclick="openCancelModal()" id="cancelNavBtn">Cancel Ticket</button>
+      <button onclick="openCancelModal()" id="cancelNavBtn">Cancel Booking</button>
       <button data-view="admin" onclick="openAdminLogin()" id="adminNavBtn">&#128274; Admin</button>
     </nav>
   </div>
@@ -747,7 +752,7 @@ onSnapshot(collection(db, 'movieLog'), snap => {
 <div class="modal-overlay" id="cancelModal">
   <div class="modal-box">
     <button class="modal-close" onclick="closeCancelModal()" title="Close">&times;</button>
-    <h2>Cancel a Ticket</h2>
+    <h2>Cancel a Booking</h2>
     <p class="modal-sub">Enter the ticket number from your ticket to cancel it and release the seats.</p>
     <div class="modal-error" id="cancelError"></div>
     <div class="modal-success" id="cancelSuccess"></div>
@@ -765,152 +770,97 @@ onSnapshot(collection(db, 'movieLog'), snap => {
 <script>
 /* ---------- CONFIG / DATA ---------- */
 // Seating layout based on physical auditorium chart.
-// OFFRs (yellow) = 58 total: Centre block rows L-R
-// JCOs (blue) = 116 total: Two sections (Left & Right) of 58 seats each, rows L-R
-// ORs (pink) = 366 total: Left block + Right block (rows A-K, 10 seats each = 220) + Centre tapering block (146)
-// VIP = 11 sofa seats, front row, NOT bookable — display only
+// Each bookable category is made of one or more titled SECTIONS, and each
+// section lists rows with an explicit seat-number range [from..to].
+//   OFFRs = 58  : rows L,M,N (middle seats only)
+//   JCOs  = 116 : "Family Members" (58) + "Single Members" (58)
+//   ORs   = 366 : "Single Members" (seats 1-10, 110) + "Family Members" (11-max, 256)
+//   VIP   = 11  : display only, not bookable
+
+// Per-row highest seat number in the ORs block (from the physical chart).
+const ORS_MAX = {A:31,B:31,C:31,D:32,E:32,F:33,G:33,H:35,I:36,J:36,K:36};
+const ORS_ROWS = ['A','B','C','D','E','F','G','H','I','J','K'];
 
 const CATEGORIES = [
   {
     key:'OFFRS', name:'OFFRs', full:'Officers',
-    note:'Rows L–N · Centre section · 3 rows only',
-    blocks:[
-      {label:'Centre', row:'L', from:1, to:19}, // 19
-      {label:'Centre', row:'M', from:1, to:19}, // 19
-      {label:'Centre', row:'N', from:1, to:20}, // 20  --> total = 58
+    note:'Rows L–N',
+    sections:[
+      { title:'', rows:[
+        {row:'L', from:6, to:24},
+        {row:'M', from:6, to:24},
+        {row:'N', from:6, to:25},
+      ]}
     ]
   },
   {
     key:'JCOS', name:'JCOs', full:'Junior Commissioned Officers',
-    note:'Rows L–R · Two sections of 58 seats each, continuous numbering',
-    blocks:[
-      // LEFT section
-      {label:'Left', row:'L', from:1,  to:9},
-      {label:'Left', row:'M', from:1,  to:9},
-      {label:'Left', row:'N', from:1,  to:8},
-      {label:'Left', row:'O', from:1,  to:8},
-      {label:'Left', row:'P', from:1,  to:8},
-      {label:'Left', row:'Q', from:1,  to:8},
-      {label:'Left', row:'R', from:1,  to:8},  // left = 58
-      // RIGHT section — continuous numbering
-      {label:'Right', row:'L', from:10, to:18},
-      {label:'Right', row:'M', from:10, to:18},
-      {label:'Right', row:'N', from:9,  to:16},
-      {label:'Right', row:'O', from:9,  to:16},
-      {label:'Right', row:'P', from:9,  to:16},
-      {label:'Right', row:'Q', from:9,  to:16},
-      {label:'Right', row:'R', from:9,  to:16}, // right = 58, total = 116
+    note:'Family & Single members',
+    sections:[
+      { title:'Family Members', rows:[
+        {row:'L', from:1, to:5},
+        {row:'M', from:1, to:5},
+        {row:'N', from:1, to:5},
+        {row:'O', from:1, to:5},
+        {row:'P', from:1, to:13},
+        {row:'Q', from:1, to:13},
+        {row:'R', from:1, to:12},
+      ]},
+      { title:'Single Members', rows:[
+        {row:'L', from:6,  to:10},
+        {row:'M', from:25, to:29},
+        {row:'N', from:25, to:29},
+        {row:'O', from:26, to:30},
+        {row:'P', from:14, to:26},
+        {row:'Q', from:14, to:26},
+        {row:'R', from:13, to:24},
+      ]},
     ]
   },
   {
     key:'ORS', name:'ORs', full:'Other Ranks',
-    note:'Rows A–K · Seats 1–10 personal, 11 onwards family · Seats 1–2 each row reserved for offline booking',
-    blocks:[
-      {label:'Left',   rows:['A','B','C','D','E','F','G','H','I','J','K'], from:1,  to:10},
-      {label:'Centre', row:'K', from:11, to:26},
-      {label:'Centre', row:'J', from:11, to:26},
-      {label:'Centre', row:'I', from:11, to:26},
-      {label:'Centre', row:'H', from:11, to:25},
-      {label:'Centre', row:'G', from:11, to:23},
-      {label:'Centre', row:'F', from:11, to:23},
-      {label:'Centre', row:'E', from:11, to:22},
-      {label:'Centre', row:'D', from:11, to:22},
-      {label:'Centre', row:'C', from:11, to:21},
-      {label:'Centre', row:'B', from:11, to:21},
-      {label:'Centre', row:'A', from:11, to:21},
-      {label:'Right',  row:'K', from:27, to:36},
-      {label:'Right',  row:'J', from:27, to:36},
-      {label:'Right',  row:'I', from:27, to:36},
-      {label:'Right',  row:'H', from:26, to:35},
-      {label:'Right',  row:'G', from:24, to:33},
-      {label:'Right',  row:'F', from:24, to:33},
-      {label:'Right',  row:'E', from:23, to:32},
-      {label:'Right',  row:'D', from:23, to:32},
-      {label:'Right',  row:'C', from:22, to:31},
-      {label:'Right',  row:'B', from:22, to:31},
-      {label:'Right',  row:'A', from:22, to:31},
+    note:'Single (seats 1–10) & Family (seats 11+) members',
+    sections:[
+      { title:'Single Members', rows: ORS_ROWS.map(r=>({row:r, from:1,  to:10})) },
+      { title:'Family Members', rows: ORS_ROWS.map(r=>({row:r, from:11, to:ORS_MAX[r]})) },
     ]
   },
   {
     key:'VIP', name:'VIP', full:'VIP Sofas (not bookable)',
-    note:'Front row · Display only · 10 sofas',
-    blocks:[
-      {label:'VIP', row:'VIP', from:1, to:10} // 10 sofas (not 11)
+    note:'Front row · Display only',
+    sections:[
+      { title:'', rows:[ {row:'VIP', from:1, to:11} ] }
     ]
   }
 ];
 
-// ── Special seat rules ──────────────────────────────────────────────────────
-// ORs offline reserved: rows A–F only
-//   • Seats 1 & 2       → right side of screen (RTL: lowest numbers = rightmost)
-//   • Last 2 seats      → left side of screen  (RTL: highest numbers = leftmost)
-// Rows G–K: no offline reserved seats.
-
-const ORS_ROW_RIGHT_MAX = {K:36,J:36,I:36,H:35,G:33,F:33,E:32,D:32,C:31,B:31,A:31};
-
-const ORS_OFFLINE_RESERVED = new Set(
-  ['A','B','C','D','E','F'].flatMap(r => [
-    `ORS-${r}1`,
-    `ORS-${r}2`,
-    `ORS-${r}${ORS_ROW_RIGHT_MAX[r]}`,
-    `ORS-${r}${ORS_ROW_RIGHT_MAX[r]-1}`,
-  ])
-);
-
-// ORs: C15-C19 and D15-D19 blocked for media/photographer
-const ORS_MEDIA_BLOCKED = new Set([
-  'ORS-C15','ORS-C16','ORS-C17','ORS-C18','ORS-C19',
-  'ORS-D15','ORS-D16','ORS-D17','ORS-D18','ORS-D19',
-]);
-
-function isSeatOfflineReserved(sid){ return ORS_OFFLINE_RESERVED.has(sid); }
-function isSeatMediaBlocked(sid){    return ORS_MEDIA_BLOCKED.has(sid); }
-function isSeatSystemBlocked(sid){   return isSeatOfflineReserved(sid) || isSeatMediaBlocked(sid); }
-
-// Tooltip text for special seats
-function seatTitle(cat, row, n, sid){
-  if(isSeatMediaBlocked(sid))    return `Row ${row} Seat ${n} — Reserved for Media/Photographer`;
-  if(isSeatOfflineReserved(sid)) return `Row ${row} Seat ${n} — Reserved for Offline Booking`;
-  if(cat==='ORS' && n<=10)       return `Row ${row} Seat ${n} — Single Member (Seats 1–10)`;
-  if(cat==='ORS' && n>=11)       return `Row ${row} Seat ${n} — Family Members (Seats 11+)`;
-  return `Row ${row} Seat ${n}`;
-}
-
-// Flatten CATEGORIES into a simple structure the rest of the app uses
-// For ORS we also store per-row block info so the seat map can render 3 columns
-// Seats are stored in RTL display order (highest number first = rightmost on screen is seat 1)
+// Flatten CATEGORIES into a single per-category seat map. Each seat carries its
+// member type ('family' | 'single' | '') derived from its section, so the one
+// map can colour-code the two groups instead of splitting into separate grids.
 function buildFlatCategories(){
   return CATEGORIES.map(cat=>{
+    let total = 0;
     const rowMap = {};
-    cat.blocks.forEach(blk=>{
-      const rowList = blk.rows || [blk.row];
-      rowList.forEach(r=>{
-        if(!rowMap[r]) rowMap[r] = {all:new Set(), blocks:[]};
-        const bseats = [];
-        for(let s=blk.from; s<=blk.to; s++){ rowMap[r].all.add(s); bseats.push(s); }
-        // RTL: reverse the block's seat array so seat 1 renders on the right
-        rowMap[r].blocks.push({label:blk.label, seats:[...bseats].reverse()});
+    const typesPresent = new Set();
+    cat.sections.forEach(sec=>{
+      const type = /family/i.test(sec.title) ? 'family'
+                 : /single/i.test(sec.title) ? 'single' : '';
+      if(type) typesPresent.add(type);
+      sec.rows.forEach(r=>{
+        if(!rowMap[r.row]) rowMap[r.row] = [];
+        for(let s=r.from; s<=r.to; s++){ rowMap[r.row].push({n:s, type}); total++; }
       });
     });
-    let rowOrder;
-    if(cat.key==='ORS')        rowOrder = ['A','B','C','D','E','F','G','H','I','J','K'];
-    else if(cat.key==='OFFRS') rowOrder = ['L','M','N'];
-    else if(cat.key==='JCOS')  rowOrder = ['L','M','N','O','P','Q','R'];
-    else rowOrder = ['VIP'];
-    const rows = rowOrder
-      .filter(r=>rowMap[r] && rowMap[r].all.size>0)
-      .map(r=>({
-        label:r,
-        // RTL: sort descending so seat 1 is last (rightmost)
-        seats:[...rowMap[r].all].sort((a,b)=>b-a),
-        blocks: rowMap[r].blocks
-      }));
-    // Total excludes system-blocked seats
-    const total = rows.reduce((s,r)=>r.seats.filter(n=>{
-      const sid = seatId(cat.key, r.label, n);
-      return !isSeatSystemBlocked(sid);
-    }).length + s, 0);
-    return {key:cat.key, name:cat.name, full:cat.full, note:cat.note||'', rows, total, bookable:cat.key!=='VIP'};
+    let order;
+    if(cat.key==='ORS') order = ORS_ROWS;
+    else if(cat.key==='VIP') order = ['VIP'];
+    else order = ['L','M','N','O','P','Q','R'];
+    const rows = order.filter(l=>rowMap[l]).map(l=>({
+      label: l,
+      seats: rowMap[l].slice().sort((a,b)=>a.n-b.n)
+    }));
+    return { key:cat.key, name:cat.name, full:cat.full, note:cat.note||'',
+             rows, total, bookable: cat.key!=='VIP', types:[...typesPresent] };
   });
 }
 const FLAT_CATS = buildFlatCategories();
@@ -1137,33 +1087,33 @@ function render(){
   fitSeats();
 }
 
-// Desktop/tablet: shrink seats just enough that the widest row fits the grid
-// width, so there's no horizontal scroll. On mobile (<=600px) we leave the
-// fixed seat sizes and allow horizontal scrolling instead. Layout-agnostic:
-// it measures the actual widest row, so it works with the 3-column ORs layout.
+// Size every seat so the widest row fits the seat-grid width — no horizontal
+// scroll. Seats shrink to fit and grow back up to their natural size.
 function fitSeats(){
-  const grids = document.querySelectorAll('.seat-grid');
-  if(window.innerWidth <= 600){
-    grids.forEach(g=>{ g.style.removeProperty('--seat-size'); g.style.removeProperty('--seat-font'); });
-    return;
-  }
-  grids.forEach(grid=>{
+  document.querySelectorAll('.seat-grid').forEach(grid=>{
     const rows = [...grid.querySelectorAll('.seat-row')];
     if(!rows.length) return;
-    const widest = ()=> Math.max(0, ...rows.map(r=>r.scrollWidth));
-    const avail  = grid.clientWidth - 4;               // small safety margin
-    const setSize = s=>{
-      grid.style.setProperty('--seat-size', s + 'px');
-      grid.style.setProperty('--seat-font', Math.max(5, Math.round(s * 0.46)) + 'px');
-    };
-    let size = 26; setSize(size);
-    const w = widest();
-    if(w > avail){
-      size = Math.max(8, Math.floor(size * avail / w));  // first estimate
-      setSize(size);
-      let guard = 0;
-      while(widest() > avail && size > 8 && guard++ < 24){ size--; setSize(size); }  // fine-tune
-    }
+    let maxSeats = 0, maxAisle = 0;
+    rows.forEach(r=>{
+      maxSeats  = Math.max(maxSeats,  r.querySelectorAll('.seat').length);
+      maxAisle  = Math.max(maxAisle,  r.querySelectorAll('.aisle').length);
+    });
+    if(!maxSeats) return;
+    const gcs  = getComputedStyle(grid);
+    const padX = parseFloat(gcs.paddingLeft) + parseFloat(gcs.paddingRight);
+    const labelEl = rows[0].querySelector('.row-label');
+    const labelW  = labelEl ? Math.ceil(labelEl.getBoundingClientRect().width) : 18;
+    // Denser rows use a tighter gap so all seats still fit; aisle = 2× the gap.
+    const gap    = maxSeats > 26 ? 2 : maxSeats > 16 ? 3 : 5;
+    const aisleW = gap * 2;
+    const avail  = grid.clientWidth - padX - 2;            // -2px safety
+    const items  = maxSeats + maxAisle + 2;                // seats + aisles + 2 row labels
+    const fixed  = labelW * 2 + maxAisle * aisleW + (items - 1) * gap;
+    let size = Math.floor((avail - fixed) / maxSeats);
+    size = Math.max(6, Math.min(26, size));                // clamp: keep seats seat-shaped
+    grid.style.setProperty('--seat-size', size + 'px');
+    grid.style.setProperty('--seat-gap',  gap  + 'px');
+    grid.style.setProperty('--seat-font', Math.max(5, Math.round(size * 0.46)) + 'px');
   });
 }
 
@@ -1251,7 +1201,9 @@ function renderBooking(){
     <div class="eyebrow">${hasMovie ? 'Now Showing' : 'Kerketta Auditorium'}</div>
     <h2>${hasMovie ? escapeHtml(movie.title) : 'No movie scheduled yet'}</h2>
     ${hasMovie && movie.poster ? `<img class="poster" src="${escapeHtml(movie.poster)}" alt="Movie poster">` : ''}
-    <p>${hasMovie && movie.synopsis ? escapeHtml(movie.synopsis) : 'Please check back soon — the administrator will upload show details.'}</p>
+    ${hasMovie
+      ? (movie.synopsis ? `<p>${escapeHtml(movie.synopsis)}</p>` : '')
+      : `<p>Please check back soon — the administrator will upload show details.</p>`}
     ${hasMovie ? `<div class="movie-meta">
       ${movie.genre    ? `<span><b>Genre:</b> ${escapeHtml(movie.genre)}</span>`:''}
       ${movie.duration ? `<span><b>Duration:</b> ${escapeHtml(movie.duration)}</span>`:''}
@@ -1287,105 +1239,54 @@ function renderBooking(){
       });
       html += `<span class="vip-note">(not for booking)</span></div>`;
     }
+
+    // Single seat map per category. Family and single seats are colour-coded
+    // (see legend) and separated by a small aisle within each row, rather than
+    // being split into separate section grids.
     html += `<div class="seat-grid">`;
-
-    if(cat.key === 'ORS'){
-      // ORS: 3-column layout — Right block | Centre (tapering) | Left block
-      // RTL: blocks are already in reversed seat order from buildFlatCategories
-      // Display order on screen: row label | Right block | Centre | Left block | row label
-      const maxCentre = Math.max(...cat.rows.map(r=>{
-        const cb = r.blocks.find(b=>b.label==='Centre');
-        return cb ? cb.seats.length : 0;
-      }));
-      cat.rows.forEach(r=>{
-        const leftB   = r.blocks.find(b=>b.label==='Left')   || {seats:[]};
-        const centreB = r.blocks.find(b=>b.label==='Centre') || {seats:[]};
-        const rightB  = r.blocks.find(b=>b.label==='Right')  || {seats:[]};
-        html += `<div class="seat-row ors-row">`;
-        html += `<span class="row-label">${r.label}</span>`;
-
-        // RIGHT block first (RTL — highest numbers on left side of screen)
-        html += `<div class="ors-block ors-right">`;
-        rightB.seats.forEach(n=>{
-          const sid=seatId(cat.key,r.label,n);
-          const booked=isBooked(sid), sel=selectedSeats.includes(sid);
-          const offline=isSeatOfflineReserved(sid), media=isSeatMediaBlocked(sid);
-          const cls = `seat ${media?'media-blocked':offline?'offline-reserved':booked?'booked':''} ${sel?'selected':''}`;
-          html += `<div class="${cls}" ${(!offline&&!media&&!booked)?`data-seat="${sid}"`:'data-blocked="1"'} title="${seatTitle(cat.key,r.label,n,sid)}">${n}</div>`;
-        });
-        html += `</div>`;
-
-        // CENTRE block with ghost padding
-        const padLeft  = Math.floor((maxCentre - centreB.seats.length)/2);
-        const padRight = maxCentre - centreB.seats.length - padLeft;
-        html += `<div class="ors-block ors-centre">`;
-        for(let p=0;p<padLeft;p++)  html += `<div class="seat ghost"></div>`;
-        centreB.seats.forEach(n=>{
-          const sid=seatId(cat.key,r.label,n);
-          const booked=isBooked(sid), sel=selectedSeats.includes(sid);
-          const offline=isSeatOfflineReserved(sid), media=isSeatMediaBlocked(sid);
-          const cls = `seat ${media?'media-blocked':offline?'offline-reserved':booked?'booked':''} ${sel?'selected':''}`;
-          html += `<div class="${cls}" ${(!offline&&!media&&!booked)?`data-seat="${sid}"`:'data-blocked="1"'} title="${seatTitle(cat.key,r.label,n,sid)}">${n}</div>`;
-        });
-        for(let p=0;p<padRight;p++) html += `<div class="seat ghost"></div>`;
-        html += `</div>`;
-
-        // LEFT block last (RTL — lowest numbers on right side of screen)
-        html += `<div class="ors-block ors-left">`;
-        leftB.seats.forEach(n=>{
-          const sid=seatId(cat.key,r.label,n);
-          const booked=isBooked(sid), sel=selectedSeats.includes(sid);
-          const offline=isSeatOfflineReserved(sid), media=isSeatMediaBlocked(sid);
-          // Divider between family (11+) and personal (1-10) — in RTL, 11 comes before 10 on screen
-          // so divider appears between n=11 (displayed first in left block reversed) and n=10
-          // Actually in RTL left block seats are [10,9,8...1] so seat 10 comes first, then 9...1
-          // The "family" zone is only in centre block (11+). Left block is all personal (1-10).
-          const cls = `seat ${media?'media-blocked':offline?'offline-reserved':booked?'booked':''} ${sel?'selected':''}`;
-          html += `<div class="${cls}" ${(!offline&&!media&&!booked)?`data-seat="${sid}"`:'data-blocked="1"'} title="${seatTitle(cat.key,r.label,n,sid)}">${n}</div>`;
-        });
-        html += `</div>`;
-        html += `<span class="row-label">${r.label}</span>`;
-        html += `</div>`;
+    cat.rows.forEach(r=>{
+      html += `<div class="seat-row"><span class="row-label">${r.label}</span>`;
+      let prevType = null;
+      r.seats.forEach(seat=>{
+        const { n, type } = seat;
+        if(prevType !== null && type !== prevType) html += `<div class="aisle"></div>`;
+        prevType = type;
+        const sid = seatId(cat.key, r.label, n);
+        const booked = isBooked(sid);
+        const sel = selectedSeats.includes(sid);
+        const tcls = type ? ('t-'+type) : '';
+        html += `<div class="seat ${tcls} ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}${type?' · '+type+' member':''}">${n}</div>`;
       });
-
-    } else {
-      // OFFRS and JCOS — RTL, seats already reversed in rows array
-      cat.rows.forEach(r=>{
-        html += `<div class="seat-row"><span class="row-label">${r.label}</span>`;
-        r.seats.forEach(n=>{
-          const sid = seatId(cat.key, r.label, n);
-          const booked = isBooked(sid);
-          const sel = selectedSeats.includes(sid);
-          // JCOs aisle — in RTL, left section ends at seat 1 on far right,
-          // aisle between right section's last seat and left section's first.
-          // Right section = higher numbers, left = lower. Aisle between rightEnd+1 and rightEnd.
-          if(cat.key==='JCOS'){
-            const leftEnd = (r.label==='L'||r.label==='M') ? 9 : 8;
-            // In RTL array, we're going high→low. Aisle appears after seat leftEnd+1 (end of right section)
-            if(n === leftEnd) html += `<div class="aisle"></div>`;
-          }
-          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="${seatTitle(cat.key,r.label,n,sid)}">${n}</div>`;
-        });
-        html += `</div>`;
-      });
+      html += `<span class="row-label">${r.label}</span></div>`;
+    });
+    // FAMILY / SINGLE text labels under each group (only when a category has both).
+    if(cat.types.includes('family') && cat.types.includes('single')){
+      let leftType = null, rightType = null;
+      for(const r of cat.rows){
+        const ts = r.seats.map(s=>s.type);
+        if(new Set(ts).size === 2){ leftType = ts[0]; rightType = ts[ts.length-1]; break; }
+      }
+      if(leftType && rightType){
+        const cnt = t => Math.max(1, ...cat.rows.map(r=>r.seats.filter(s=>s.type===t).length));
+        html += `<div class="group-labels">
+          <span class="row-label"></span>
+          <span class="group-label glab-${leftType}" style="flex:${cnt(leftType)}">${leftType.toUpperCase()}</span>
+          <div class="aisle"></div>
+          <span class="group-label glab-${rightType}" style="flex:${cnt(rightType)}">${rightType.toUpperCase()}</span>
+          <span class="row-label"></span>
+        </div>`;
+      }
     }
     html += `</div>`;
 
-    // Zone note for ORs
-    if(cat.key==='ORS'){
-      html += `<div style="text-align:center;font-size:.78rem;color:#6b5f54;margin:-14px 0 16px;padding:8px 16px;background:#fff;border:1px solid var(--line);border-radius:0 0 8px 8px;">
-        <b>Seat guide:</b> Seats 1–10 = Single Member &nbsp;·&nbsp; Seats 11 onwards = Family Members &nbsp;·&nbsp;
-        <span style="color:var(--maroon);">■</span> Reserved (offline) &nbsp;·&nbsp;
-        <span style="color:#e67e22;">■</span> Media/Photographer
-      </div>`;
-    }
-
-    html += `<div class="legend">
+    let legend = `<div class="legend">
       <span><i class="e"></i> Available</span>
       <span><i class="s"></i> Selected</span>
-      <span><i class="b"></i> Booked</span>
-      ${cat.key==='ORS'?`<span><i class="offline-res-i"></i> Offline Reserved</span><span><i class="media-i"></i> Media</span>`:''}
-    </div>`;
+      <span><i class="b"></i> Booked</span>`;
+    if(cat.types.includes('family')) legend += `<span><i class="tf"></i> Family member</span>`;
+    if(cat.types.includes('single')) legend += `<span><i class="ts"></i> Single member</span>`;
+    legend += `</div>`;
+    html += legend;
 
     html += renderBookingForm(cat);
   }
@@ -1398,9 +1299,9 @@ function renderBookingForm(cat){
   return `<div class="booking-form">
     <h3>Booking Details — ${cat.name}</h3>
     <div class="summary">
-      Show: <b>${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()} — ${formatSlot(selectedSlot)}</b><br>
-      Selected seats: <b>${seatsLabel}</b> &nbsp;|&nbsp; Count: <b>${selectedSeats.length} / 4</b>
-      ${selectedSeats.length >= 4 ? `<br><span style="color:var(--maroon);font-size:.82rem;font-weight:600;">Maximum 4 seats reached.</span>` : ''}
+      Show: <b>${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()} — ${formatSlot(selectedSlot)}</b> &nbsp;|&nbsp;
+      Selected seats: <b>${seatsLabel}</b> &nbsp;|&nbsp;
+      Count: <b>${selectedSeats.length}</b>
     </div>
     <div class="field"><label>Name</label><input id="f_name" type="text" placeholder="Full name"></div>
     <div class="field"><label>Mobile No.</label><input id="f_mobile" type="tel" placeholder="e.g. 9876543210" maxlength="10" pattern="[0-9]{10}"></div>
@@ -1703,19 +1604,11 @@ function attachHandlers(){
   // seat select
   document.querySelectorAll('.seat').forEach(el=>{
     if(el.classList.contains('booked')) return;
-    if(el.classList.contains('offline-reserved')) return;
-    if(el.classList.contains('media-blocked')) return;
-    if(el.dataset.blocked) return;
     el.addEventListener('click', ()=>{
       const sid = el.dataset.seat;
-      if(!sid) return;
       if(selectedSeats.includes(sid)){
         selectedSeats = selectedSeats.filter(s=>s!==sid);
       } else {
-        if(selectedSeats.length >= 4){
-          alert('Maximum 4 seats can be booked per booking.');
-          return;
-        }
         selectedSeats.push(sid);
       }
       render();
@@ -1734,14 +1627,6 @@ function attachHandlers(){
       }
       if(!/^[0-9]{10}$/.test(mobile)){
         alert('Please enter a valid 10-digit mobile number.');
-        return;
-      }
-      if(selectedSeats.length > 4){
-        alert('Maximum 4 seats can be booked per booking. Please deselect some seats.');
-        return;
-      }
-      if(selectedSeats.length === 0){
-        alert('Please select at least one seat.');
         return;
       }
       const taken = selectedSeats.filter(isBooked);
@@ -1915,19 +1800,16 @@ async function confirmCancelBooking(tno){
   const b = document.getElementById('cancelLookupBtn');
   const err = document.getElementById('cancelError'), succ = document.getElementById('cancelSuccess');
   err.classList.remove('show');
-  if(!confirm('Cancel this booking and release the seats?')) return;
   b.disabled = true; b.textContent = 'Cancelling…';
   try {
-    await fbCancelBooking(tno);   // deletes the seat docs + weekly lock; the live
-                                  // listener then frees the seats on the seat map.
+    await fbCancelBooking(tno);
     document.getElementById('cancelDetails').innerHTML = '';
-    succ.textContent = 'Booking ' + tno + ' cancelled — the seats have been released.';
+    succ.textContent = 'Booking ' + tno + ' cancelled — your seats have been released.';
     succ.classList.add('show');
     b.style.display = 'none';
     document.getElementById('cancelTicketInput').value = '';
   } catch(e){
-    err.textContent = 'Could not cancel (' + (e.code || e.message) + '). '
-      + (e.code === 'permission-denied' ? 'The database rules must allow public deletes for self-cancel.' : 'Please try again.');
+    err.textContent = 'Could not cancel (' + (e.code || e.message) + '). Please try again.';
     err.classList.add('show');
     b.disabled = false; b.textContent = 'Cancel This Booking';
   }
