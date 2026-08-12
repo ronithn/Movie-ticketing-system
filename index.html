@@ -714,6 +714,7 @@ onSnapshot(collection(db, 'movieLog'), snap => {
     
     <nav>
       <button class="active" data-view="booking" onclick="switchView('booking')" id="bookingNavBtn">Book Tickets</button>
+      <button onclick="openCancelModal()" id="cancelNavBtn">Cancel Ticket</button>
       <button data-view="admin" onclick="openAdminLogin()" id="adminNavBtn">&#128274; Admin</button>
     </nav>
   </div>
@@ -739,6 +740,23 @@ onSnapshot(collection(db, 'movieLog'), snap => {
       <input type="password" id="adminPasswordInput" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')submitAdminLogin()">
     </div>
     <button class="btn" id="loginBtn" onclick="submitAdminLogin()">Login</button>
+  </div>
+</div>
+
+<!-- User Self-Cancel Modal -->
+<div class="modal-overlay" id="cancelModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeCancelModal()" title="Close">&times;</button>
+    <h2>Cancel a Ticket</h2>
+    <p class="modal-sub">Enter the ticket number from your ticket to cancel it and release the seats.</p>
+    <div class="modal-error" id="cancelError"></div>
+    <div class="modal-success" id="cancelSuccess"></div>
+    <div class="field">
+      <label>Ticket Number</label>
+      <input type="text" id="cancelTicketInput" placeholder="e.g. KA-2026-87B07" onkeydown="if(event.key==='Enter')lookupCancel()">
+    </div>
+    <div id="cancelDetails"></div>
+    <button class="btn" id="cancelLookupBtn" onclick="lookupCancel()">Find Booking</button>
   </div>
 </div>
 
@@ -1856,9 +1874,71 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
+/* ---------- USER SELF-CANCEL (by ticket number) ---------- */
+function openCancelModal(){
+  document.getElementById('cancelModal').classList.add('open');
+  document.getElementById('cancelError').classList.remove('show');
+  document.getElementById('cancelSuccess').classList.remove('show');
+  document.getElementById('cancelDetails').innerHTML = '';
+  const b = document.getElementById('cancelLookupBtn');
+  b.textContent = 'Find Booking'; b.onclick = lookupCancel; b.disabled = false; b.style.display = '';
+  setTimeout(()=>document.getElementById('cancelTicketInput').focus(), 80);
+}
+function closeCancelModal(){
+  document.getElementById('cancelModal').classList.remove('open');
+  document.getElementById('cancelTicketInput').value = '';
+  document.getElementById('cancelDetails').innerHTML = '';
+}
+function lookupCancel(){
+  const tno = document.getElementById('cancelTicketInput').value.trim().toUpperCase();
+  const err = document.getElementById('cancelError'), succ = document.getElementById('cancelSuccess');
+  err.classList.remove('show'); succ.classList.remove('show');
+  if(!tno) return;
+  const booking = bookingFromTicketNo(tno);
+  if(!booking){
+    err.textContent = 'No booking found for ticket ' + tno + '.';
+    err.classList.add('show');
+    document.getElementById('cancelDetails').innerHTML = '';
+    return;
+  }
+  const cat = FLAT_CATS.find(c=>c.key===booking.category);
+  document.getElementById('cancelDetails').innerHTML = `<div class="summary" style="margin-top:2px;">
+    <b>${escapeHtml(booking.movie) || 'Movie'}</b><br>
+    ${escapeHtml(booking.showDateLabel || booking.showDate)} — ${formatSlot(booking.slot)}<br>
+    ${cat ? cat.name : booking.category} · Seats: <b>${booking.seats.map(s=>seatLabel(s)).join(', ')}</b>
+  </div>`;
+  const b = document.getElementById('cancelLookupBtn');
+  b.textContent = 'Cancel This Booking';
+  b.onclick = ()=>confirmCancelBooking(tno);
+}
+async function confirmCancelBooking(tno){
+  const b = document.getElementById('cancelLookupBtn');
+  const err = document.getElementById('cancelError'), succ = document.getElementById('cancelSuccess');
+  err.classList.remove('show');
+  if(!confirm('Cancel this booking and release the seats?')) return;
+  b.disabled = true; b.textContent = 'Cancelling…';
+  try {
+    await fbCancelBooking(tno);   // deletes the seat docs + weekly lock; the live
+                                  // listener then frees the seats on the seat map.
+    document.getElementById('cancelDetails').innerHTML = '';
+    succ.textContent = 'Booking ' + tno + ' cancelled — the seats have been released.';
+    succ.classList.add('show');
+    b.style.display = 'none';
+    document.getElementById('cancelTicketInput').value = '';
+  } catch(e){
+    err.textContent = 'Could not cancel (' + (e.code || e.message) + '). '
+      + (e.code === 'permission-denied' ? 'The database rules must allow public deletes for self-cancel.' : 'Please try again.');
+    err.classList.add('show');
+    b.disabled = false; b.textContent = 'Cancel This Booking';
+  }
+}
+
 /* ---------- INIT ---------- */
 document.getElementById('adminModal').addEventListener('click', function(e){
   if(e.target === this) closeAdminLogin();
+});
+document.getElementById('cancelModal').addEventListener('click', function(e){
+  if(e.target === this) closeCancelModal();
 });
 window.addEventListener('resize', fitSeats);
 render();
