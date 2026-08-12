@@ -169,9 +169,10 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
   max-width:420px;
 }
 .seat-grid{
-  display:grid;
+  display:flex;
+  flex-direction:column;
+  align-items:center;      /* centre every row → symmetric auditorium, straight aisle */
   gap:7px;
-  justify-content:center;
   margin-bottom:24px;
   background:#fff;
   border:1px solid var(--line);
@@ -179,7 +180,7 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
   padding:24px 16px;
   overflow-x:hidden;
 }
-.seat-row{display:flex; gap:var(--seat-gap, 5px); align-items:center; justify-content:center; flex-wrap:nowrap;}
+.seat-row{display:flex; gap:var(--seat-gap, 5px); align-items:center; justify-content:center; flex-wrap:nowrap; width:max-content;}
 .row-label{
   width:22px; text-align:center; font-size:.72rem; color:var(--gold-deep); font-weight:700;
 }
@@ -586,9 +587,8 @@ footer{
     overflow-x:auto;
     -webkit-overflow-scrolling:touch;
     border-radius:8px;
-    justify-content:start;
+    align-items:flex-start;   /* left-align so the horizontal scroll starts at the left */
   }
-  .seat-row{ justify-content:flex-start; width:max-content; }
   .row-label{width:16px; font-size:.62rem;}
 
   /* Legend (1.2×) */
@@ -1097,39 +1097,40 @@ function fitSeats(){
     const gl = grid.querySelector('.group-labels');
     if(mobile){
       // Mobile: keep seats at their natural size and scroll horizontally instead
-      // of shrinking. Match the label row to the (scrollable) seat width.
+      // of shrinking.
       grid.style.removeProperty('--seat-size');
       grid.style.removeProperty('--seat-gap');
       grid.style.removeProperty('--seat-font');
-      if(gl){
-        const w = rows.length ? Math.max(0, ...rows.map(r=>r.scrollWidth)) : 0;
-        gl.style.width = w ? w + 'px' : '';
+    } else if(rows.length){
+      // Desktop/tablet: shrink seats so the widest row fits (no scroll).
+      let maxSeats = 0, maxAisle = 0;
+      rows.forEach(r=>{
+        maxSeats = Math.max(maxSeats, r.querySelectorAll('.seat').length);
+        maxAisle = Math.max(maxAisle, r.querySelectorAll('.aisle').length);
+      });
+      if(maxSeats){
+        const gcs  = getComputedStyle(grid);
+        const padX = parseFloat(gcs.paddingLeft) + parseFloat(gcs.paddingRight);
+        const labelEl = rows[0].querySelector('.row-label');
+        const labelW  = labelEl ? Math.ceil(labelEl.getBoundingClientRect().width) : 18;
+        const gap    = maxSeats > 26 ? 2 : maxSeats > 16 ? 3 : 5;  // tighter gap for dense rows
+        const aisleW = gap * 2;
+        const avail  = grid.clientWidth - padX - 2;
+        const items  = maxSeats + maxAisle + 2;
+        const fixed  = labelW * 2 + maxAisle * aisleW + (items - 1) * gap;
+        let size = Math.floor((avail - fixed) / maxSeats);
+        size = Math.max(6, Math.min(26, size));
+        grid.style.setProperty('--seat-size', size + 'px');
+        grid.style.setProperty('--seat-gap',  gap  + 'px');
+        grid.style.setProperty('--seat-font', Math.max(5, Math.round(size * 0.46)) + 'px');
       }
-      return;
     }
-    if(gl) gl.style.width = '';   // desktop/tablet: labels span full width (CSS)
-    if(!rows.length) return;
-    let maxSeats = 0, maxAisle = 0;
-    rows.forEach(r=>{
-      maxSeats  = Math.max(maxSeats,  r.querySelectorAll('.seat').length);
-      maxAisle  = Math.max(maxAisle,  r.querySelectorAll('.aisle').length);
-    });
-    if(!maxSeats) return;
-    const gcs  = getComputedStyle(grid);
-    const padX = parseFloat(gcs.paddingLeft) + parseFloat(gcs.paddingRight);
-    const labelEl = rows[0].querySelector('.row-label');
-    const labelW  = labelEl ? Math.ceil(labelEl.getBoundingClientRect().width) : 18;
-    // Denser rows use a tighter gap so all seats still fit; aisle = 2× the gap.
-    const gap    = maxSeats > 26 ? 2 : maxSeats > 16 ? 3 : 5;
-    const aisleW = gap * 2;
-    const avail  = grid.clientWidth - padX - 2;            // -2px safety
-    const items  = maxSeats + maxAisle + 2;                // seats + aisles + 2 row labels
-    const fixed  = labelW * 2 + maxAisle * aisleW + (items - 1) * gap;
-    let size = Math.floor((avail - fixed) / maxSeats);
-    size = Math.max(6, Math.min(26, size));                // clamp: keep seats seat-shaped
-    grid.style.setProperty('--seat-size', size + 'px');
-    grid.style.setProperty('--seat-gap',  gap  + 'px');
-    grid.style.setProperty('--seat-font', Math.max(5, Math.round(size * 0.46)) + 'px');
+    // Match the FAMILY/SINGLE label row to the widest seat row so it lines up
+    // with the seats (whether centred on desktop or scrolled on mobile).
+    if(gl){
+      const w = rows.length ? Math.max(0, ...rows.map(r=>r.scrollWidth)) : 0;
+      gl.style.width = w ? w + 'px' : '';
+    }
   });
 }
 
