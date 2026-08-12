@@ -177,22 +177,23 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
   border:1px solid var(--line);
   border-radius:8px;
   padding:24px 16px;
-  overflow-x:auto;
+  overflow-x:hidden;
 }
-.seat-row{display:flex; gap:5px; align-items:center; justify-content:center;}
+.seat-row{display:flex; gap:var(--seat-gap, 5px); align-items:center; justify-content:center; flex-wrap:nowrap;}
 .row-label{
   width:22px; text-align:center; font-size:.72rem; color:var(--gold-deep); font-weight:700;
 }
 .seat{
-  width:26px; height:26px;
+  width:var(--seat-size, 26px); height:var(--seat-size, 26px);
   border-radius:4px 4px 9px 9px;
   background:var(--seat-empty);
   border:1px solid var(--line);
   cursor:pointer;
-  font-size:.6rem;
+  font-size:var(--seat-font, .6rem);
   display:flex; align-items:center; justify-content:center;
   color:#a8998a;
-  transition:.15s;
+  transition:background .15s, border-color .15s;
+  flex:0 0 auto;
 }
 .seat:hover{background:#f1e3c4; border-color:var(--gold);}
 .seat.selected{background:var(--gold); border-color:var(--gold-deep); color:#fff; transform:scale(1.05);}
@@ -211,7 +212,7 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .seat.t-single:not(.booked):not(.selected){ background:#e6f2ea; border-color:#c3e2ce; }
 .seat.t-family:not(.booked):not(.selected):hover,
 .seat.t-single:not(.booked):not(.selected):hover{ background:#f1e3c4; border-color:var(--gold); }
-.aisle{ width:14px; }
+.aisle{ width:calc(var(--seat-gap, 5px) * 2); flex:0 0 auto; }
 .section-title{
   text-align:center;
   font-family:var(--font-display);
@@ -533,7 +534,7 @@ footer{
   .hero h2{font-size:2.1rem;}
   .cats{gap:12px;}
   .cat-card{flex:1 1 160px; padding:16px;}
-  .seat-grid{padding:18px 10px; overflow-x:auto;}
+  .seat-grid{padding:18px 10px; overflow-x:hidden;}
   .admin-grid{gap:18px;}
   .panel{padding:18px;}
   .row2{grid-template-columns:1fr 1fr;}
@@ -575,22 +576,13 @@ footer{
 
   /* Seat map – scrollable on small screens */
   .seat-grid{
-    padding:14px 10px;
-    overflow-x:auto;
-    -webkit-overflow-scrolling:touch;
+    padding:14px 8px;
+    overflow-x:hidden;       /* seats auto-size to fit — no horizontal scroll */
     border-radius:8px;
-    /* Align to start (not center) so wide rows scroll from the left edge
-       instead of having their left half clipped and unreachable. */
-    justify-content:start;
-    justify-items:start;
+    justify-content:center;
   }
-  .seat-row, .ors-row{
-    justify-content:flex-start;
-    width:max-content;
-    min-width:100%;        /* fill the card when a row is narrow, expand when wide */
-  }
-  .seat{width:22px; height:22px; font-size:.5rem; border-radius:3px 3px 7px 7px;}
-  .row-label{width:18px; font-size:.65rem;}
+  .seat-row{ justify-content:center; }
+  .row-label{width:16px; font-size:.62rem;}
 
   /* Legend (1.2×) */
   .legend{gap:14px; font-size:.88rem; margin-bottom:22px;}
@@ -1086,6 +1078,37 @@ function render(){
   if(currentView === 'booking') app.innerHTML = renderBooking();
   else app.innerHTML = renderAdmin();
   attachHandlers();
+  fitSeats();
+}
+
+// Size every seat so the widest row fits the seat-grid width — no horizontal
+// scroll. Seats shrink to fit and grow back up to their natural size.
+function fitSeats(){
+  document.querySelectorAll('.seat-grid').forEach(grid=>{
+    const rows = [...grid.querySelectorAll('.seat-row')];
+    if(!rows.length) return;
+    let maxSeats = 0, maxAisle = 0;
+    rows.forEach(r=>{
+      maxSeats  = Math.max(maxSeats,  r.querySelectorAll('.seat').length);
+      maxAisle  = Math.max(maxAisle,  r.querySelectorAll('.aisle').length);
+    });
+    if(!maxSeats) return;
+    const gcs  = getComputedStyle(grid);
+    const padX = parseFloat(gcs.paddingLeft) + parseFloat(gcs.paddingRight);
+    const labelEl = rows[0].querySelector('.row-label');
+    const labelW  = labelEl ? Math.ceil(labelEl.getBoundingClientRect().width) : 18;
+    // Denser rows use a tighter gap so all seats still fit; aisle = 2× the gap.
+    const gap    = maxSeats > 26 ? 2 : maxSeats > 16 ? 3 : 5;
+    const aisleW = gap * 2;
+    const avail  = grid.clientWidth - padX - 2;            // -2px safety
+    const items  = maxSeats + maxAisle + 2;                // seats + aisles + 2 row labels
+    const fixed  = labelW * 2 + maxAisle * aisleW + (items - 1) * gap;
+    let size = Math.floor((avail - fixed) / maxSeats);
+    size = Math.max(6, Math.min(26, size));                // clamp: keep seats seat-shaped
+    grid.style.setProperty('--seat-size', size + 'px');
+    grid.style.setProperty('--seat-gap',  gap  + 'px');
+    grid.style.setProperty('--seat-font', Math.max(5, Math.round(size * 0.46)) + 'px');
+  });
 }
 
 /* ---------- CALENDAR ---------- */
@@ -1775,6 +1798,7 @@ document.getElementById('adminModal').addEventListener('click', function(e){
 document.getElementById('cancelModal').addEventListener('click', function(e){
   if(e.target === this) closeCancelModal();
 });
+window.addEventListener('resize', fitSeats);
 render();
 </script>
 </body>
