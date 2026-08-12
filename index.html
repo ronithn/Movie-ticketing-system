@@ -1580,26 +1580,20 @@ function renderAdmin(){
   </div>`;
   html += `<div class="admin-grid">`;
 
-  // Booking stats — busiest day + totals
+  // Booking stats — bookings (tickets) only
   const busyT = busiestBookingDay(true);
-  const busyS = busiestBookingDay(false);
   const totalTickets = new Set(STATE.bookings.map(r=>r.ticketNo)).size;
   html += `<div class="panel"><h3>Booking Stats</h3>
     <div class="stat-tiles">
       <div class="stat-tile">
-        <div class="stat-label">Busiest day (bookings)</div>
+        <div class="stat-label">Busiest day</div>
         <div class="stat-value">${busyT ? fmtDayKey(busyT.day) : '—'}</div>
         <div class="stat-sub">${busyT ? busyT.count + ' booking' + (busyT.count>1?'s':'') : 'No bookings yet'}</div>
       </div>
       <div class="stat-tile">
-        <div class="stat-label">Busiest day (seats)</div>
-        <div class="stat-value">${busyS ? fmtDayKey(busyS.day) : '—'}</div>
-        <div class="stat-sub">${busyS ? busyS.count + ' seat' + (busyS.count>1?'s':'') : '—'}</div>
-      </div>
-      <div class="stat-tile">
         <div class="stat-label">Total bookings</div>
         <div class="stat-value">${totalTickets}</div>
-        <div class="stat-sub">${STATE.bookings.length} seat${STATE.bookings.length===1?'':'s'} sold</div>
+        <div class="stat-sub">${totalTickets===1?'1 booking':totalTickets+' bookings'}</div>
       </div>
       ${(()=>{ const f = firstBooking(); return `
       <div class="stat-tile">
