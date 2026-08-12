@@ -390,6 +390,11 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 
 /* Admin */
 .admin-grid{display:grid; gap:24px;}
+.stat-tiles{ display:flex; gap:14px; flex-wrap:wrap; }
+.stat-tile{ flex:1 1 180px; background:var(--paper); border:1px solid var(--line); border-left:4px solid var(--gold); border-radius:8px; padding:14px 16px; }
+.stat-label{ font-size:.68rem; text-transform:uppercase; letter-spacing:1px; color:var(--gold-deep); font-weight:700; margin-bottom:6px; }
+.stat-value{ font-family:var(--font-display); font-size:1.25rem; color:var(--maroon-deep); font-weight:600; line-height:1.2; }
+.stat-sub{ font-size:.8rem; color:#6b5f54; margin-top:4px; }
 .panel{
   background:#fff; border:1px solid var(--line); border-left:4px solid var(--maroon); border-radius:8px; padding:24px;
 }
@@ -1523,6 +1528,24 @@ function downloadTicket(ticketNo){
 }
 
 /* ---------- ADMIN VIEW ---------- */
+// Busiest show day across all bookings. byTickets=true counts distinct bookings
+// (a multi-seat booking = 1); byTickets=false counts seats sold.
+function busiestBookingDay(byTickets = true){
+  const counts = {}, seen = new Set();
+  STATE.bookings.forEach(r=>{
+    if(byTickets){ const k = r.showDate + '|' + r.ticketNo; if(seen.has(k)) return; seen.add(k); }
+    counts[r.showDate] = (counts[r.showDate] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  return top ? { day: top[0], count: top[1] } : null;
+}
+function fmtDayKey(key){
+  if(!key) return '—';
+  const [y,m,d] = key.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  return `${DAY_NAMES[dt.getDay()]}, ${d} ${MONTH_NAMES[dt.getMonth()]} ${y}`;
+}
+
 function renderAdmin(){
   const movie = STATE.movie;
   let html = `<div class="admin-header-bar">
@@ -1533,6 +1556,30 @@ function renderAdmin(){
     </div>
   </div>`;
   html += `<div class="admin-grid">`;
+
+  // Booking stats — busiest day + totals
+  const busyT = busiestBookingDay(true);
+  const busyS = busiestBookingDay(false);
+  const totalTickets = new Set(STATE.bookings.map(r=>r.ticketNo)).size;
+  html += `<div class="panel"><h3>Booking Stats</h3>
+    <div class="stat-tiles">
+      <div class="stat-tile">
+        <div class="stat-label">Busiest day (bookings)</div>
+        <div class="stat-value">${busyT ? fmtDayKey(busyT.day) : '—'}</div>
+        <div class="stat-sub">${busyT ? busyT.count + ' booking' + (busyT.count>1?'s':'') : 'No bookings yet'}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Busiest day (seats)</div>
+        <div class="stat-value">${busyS ? fmtDayKey(busyS.day) : '—'}</div>
+        <div class="stat-sub">${busyS ? busyS.count + ' seat' + (busyS.count>1?'s':'') : '—'}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Total bookings</div>
+        <div class="stat-value">${totalTickets}</div>
+        <div class="stat-sub">${STATE.bookings.length} seat${STATE.bookings.length===1?'':'s'} sold</div>
+      </div>
+    </div>
+  </div>`;
 
   // Movie management
   html += `<div class="panel">
