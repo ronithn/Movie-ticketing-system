@@ -1545,6 +1545,16 @@ function fmtDayKey(key){
   const dt = new Date(y, m-1, d);
   return `${DAY_NAMES[dt.getDay()]}, ${d} ${MONTH_NAMES[dt.getMonth()]} ${y}`;
 }
+// Earliest booking ever made. Uses the sortable createdAt timestamp, falling
+// back to parsing the human bookedAt string for any older records.
+function firstBooking(){
+  const bs = STATE.bookings;
+  if(!bs.length) return null;
+  const keyOf = r => (typeof r.createdAt === 'number' ? r.createdAt : (Date.parse(r.bookedAt) || Infinity));
+  let first = null, min = Infinity;
+  bs.forEach(r=>{ const k = keyOf(r); if(k < min){ min = k; first = r; } });
+  return first;
+}
 
 function renderAdmin(){
   const movie = STATE.movie;
@@ -1578,6 +1588,12 @@ function renderAdmin(){
         <div class="stat-value">${totalTickets}</div>
         <div class="stat-sub">${STATE.bookings.length} seat${STATE.bookings.length===1?'':'s'} sold</div>
       </div>
+      ${(()=>{ const f = firstBooking(); return `
+      <div class="stat-tile">
+        <div class="stat-label">First booking made</div>
+        <div class="stat-value">${f ? escapeHtml(f.bookedAt || fmtDayKey(f.showDate)) : '—'}</div>
+        <div class="stat-sub">${f ? escapeHtml([f.ticketNo, f.name].filter(Boolean).join(' · ')) : 'No bookings yet'}</div>
+      </div>`; })()}
     </div>
   </div>`;
 
@@ -1769,10 +1785,11 @@ function attachHandlers(){
       const showDateLabel = `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
       const movie = STATE.movie.title;
       const bookedAt = new Date().toLocaleString('en-IN', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const createdAt = Date.now();   // sortable timestamp (for first/last-booking stats)
       // One reservation document per seat, keyed by show + seat.
       const reservations = selectedSeats.map(seat => ({
         id: seatDocId(showDate, slot, seat),
-        data: { showDate, slot, category: selectedCategory, seat, ticketNo, name, mobile, movie, showDateLabel, bookedAt }
+        data: { showDate, slot, category: selectedCategory, seat, ticketNo, name, mobile, movie, showDateLabel, bookedAt, createdAt }
       }));
       // Per-week lock for this mobile number (one booking per number per week).
       const lock = { id: `${weekStart}_${mobile}`, data: { mobile, weekStart, ticketNo, showDate, bookedAt } };
