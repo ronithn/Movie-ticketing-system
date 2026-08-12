@@ -580,14 +580,15 @@ footer{
   /* Screen label */
   .screen-label{width:70%; font-size:.65rem; letter-spacing:3px; margin-bottom:20px;}
 
-  /* Seat map – scrollable on small screens */
+  /* Seat map – keep seats full-size and scroll horizontally on small screens */
   .seat-grid{
     padding:14px 8px;
-    overflow-x:hidden;       /* seats auto-size to fit — no horizontal scroll */
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
     border-radius:8px;
-    justify-content:center;
+    justify-content:start;
   }
-  .seat-row{ justify-content:center; }
+  .seat-row{ justify-content:flex-start; width:max-content; }
   .row-label{width:16px; font-size:.62rem;}
 
   /* Legend (1.2×) */
@@ -1090,8 +1091,23 @@ function render(){
 // Size every seat so the widest row fits the seat-grid width — no horizontal
 // scroll. Seats shrink to fit and grow back up to their natural size.
 function fitSeats(){
+  const mobile = window.innerWidth <= 600;
   document.querySelectorAll('.seat-grid').forEach(grid=>{
     const rows = [...grid.querySelectorAll('.seat-row')];
+    const gl = grid.querySelector('.group-labels');
+    if(mobile){
+      // Mobile: keep seats at their natural size and scroll horizontally instead
+      // of shrinking. Match the label row to the (scrollable) seat width.
+      grid.style.removeProperty('--seat-size');
+      grid.style.removeProperty('--seat-gap');
+      grid.style.removeProperty('--seat-font');
+      if(gl){
+        const w = rows.length ? Math.max(0, ...rows.map(r=>r.scrollWidth)) : 0;
+        gl.style.width = w ? w + 'px' : '';
+      }
+      return;
+    }
+    if(gl) gl.style.width = '';   // desktop/tablet: labels span full width (CSS)
     if(!rows.length) return;
     let maxSeats = 0, maxAisle = 0;
     rows.forEach(r=>{
