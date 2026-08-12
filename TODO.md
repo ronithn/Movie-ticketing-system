@@ -12,6 +12,13 @@
 - [x] **Mobile seat-map clipping** — wide rows (JCOs/ORs) now scroll cleanly from
   the left edge instead of clipping the first seats.
 
+## Security note
+- User self-cancel (by ticket number) requires **public deletes** on `bookings`
+  and `weekLocks`. This means anyone who knows a ticket number can cancel that
+  booking (and, via direct DB access, delete arbitrary bookings). Accepted trade-off
+  for a backend-less app. Revisit if a backend / Cloud Function becomes available
+  (move cancel behind a verified function).
+
 ## Backlog
 - [ ] **PII split** — bookings are world-readable, exposing customer names + mobile
   numbers to anyone with the (public) Firebase config. Split into a public, PII-free

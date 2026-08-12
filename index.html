@@ -204,6 +204,19 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .legend .s{background:var(--gold); border-color:var(--gold-deep);}
 .legend .b{background:var(--seat-booked); border-color:#a8a098;}
 .aisle{ width:14px; }
+.section-title{
+  text-align:center;
+  font-family:var(--font-display);
+  font-size:1.05rem;
+  font-weight:600;
+  color:var(--maroon-deep);
+  letter-spacing:.5px;
+  margin:6px auto 10px;
+  padding-bottom:6px;
+  border-bottom:2px solid var(--gold);
+  width:fit-content;
+  padding-left:18px; padding-right:18px;
+}
 
 /* ORS 3-column layout */
 .ors-row{
@@ -700,6 +713,7 @@ onSnapshot(collection(db, 'movieLog'), snap => {
     
     <nav>
       <button class="active" data-view="booking" onclick="switchView('booking')" id="bookingNavBtn">Book Tickets</button>
+      <button onclick="openCancelModal()" id="cancelNavBtn">Cancel Booking</button>
       <button data-view="admin" onclick="openAdminLogin()" id="adminNavBtn">&#128274; Admin</button>
     </nav>
   </div>
@@ -728,122 +742,107 @@ onSnapshot(collection(db, 'movieLog'), snap => {
   </div>
 </div>
 
+<!-- User Self-Cancel Modal -->
+<div class="modal-overlay" id="cancelModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeCancelModal()" title="Close">&times;</button>
+    <h2>Cancel a Booking</h2>
+    <p class="modal-sub">Enter the ticket number from your ticket to cancel it and release the seats.</p>
+    <div class="modal-error" id="cancelError"></div>
+    <div class="modal-success" id="cancelSuccess"></div>
+    <div class="field">
+      <label>Ticket Number</label>
+      <input type="text" id="cancelTicketInput" placeholder="e.g. KA-2026-87B07" onkeydown="if(event.key==='Enter')lookupCancel()">
+    </div>
+    <div id="cancelDetails"></div>
+    <button class="btn" id="cancelLookupBtn" onclick="lookupCancel()">Find Booking</button>
+  </div>
+</div>
+
 
 
 <script>
 /* ---------- CONFIG / DATA ---------- */
 // Seating layout based on physical auditorium chart.
-// OFFRs (yellow) = 58 total: Centre block rows L-R
-// JCOs (blue) = 116 total: Two sections (Left & Right) of 58 seats each, rows L-R
-// ORs (pink) = 366 total: Left block + Right block (rows A-K, 10 seats each = 220) + Centre tapering block (146)
-// VIP = 11 sofa seats, front row, NOT bookable — display only
+// Each bookable category is made of one or more titled SECTIONS, and each
+// section lists rows with an explicit seat-number range [from..to].
+//   OFFRs = 58  : rows L,M,N (middle seats only)
+//   JCOs  = 116 : "Family Members" (58) + "Single Members" (58)
+//   ORs   = 366 : "Single Members" (seats 1-10, 110) + "Family Members" (11-max, 256)
+//   VIP   = 11  : display only, not bookable
+
+// Per-row highest seat number in the ORs block (from the physical chart).
+const ORS_MAX = {A:31,B:31,C:31,D:32,E:32,F:33,G:33,H:35,I:36,J:36,K:36};
+const ORS_ROWS = ['A','B','C','D','E','F','G','H','I','J','K'];
 
 const CATEGORIES = [
   {
     key:'OFFRS', name:'OFFRs', full:'Officers',
-    note:'Rows M–R · Centre section (Row L is VIP, not bookable)',
-    blocks:[
-      {label:'Centre', row:'M', from:1, to:10}, // 10
-      {label:'Centre', row:'N', from:1, to:10}, // 10
-      {label:'Centre', row:'O', from:1, to:10}, // 10
-      {label:'Centre', row:'P', from:1, to:10}, // 10
-      {label:'Centre', row:'Q', from:1, to:9},  // 9
-      {label:'Centre', row:'R', from:1, to:9},  // 9  --> total = 58
+    note:'Rows L–N',
+    sections:[
+      { title:'', rows:[
+        {row:'L', from:6, to:24},
+        {row:'M', from:6, to:24},
+        {row:'N', from:6, to:25},
+      ]}
     ]
   },
   {
     key:'JCOS', name:'JCOs', full:'Junior Commissioned Officers',
-    note:'Rows L–R · Two sections of 58 seats each, continuous numbering',
-    // Per row: left section seats 1..N, right section continues from N+1
-    // Rows L,M: 9 left + 9 right = 18 per row (section total 9×2 + 8×5 = 58... recount below)
-    // Distribution: rows L,M = 9 per section; rows N,O,P,Q,R = 8 per section -> 2×9 + 5×8 = 58 per section ✓
-    blocks:[
-      // LEFT section
-      {label:'Left', row:'L', from:1,  to:9},  // 9
-      {label:'Left', row:'M', from:1,  to:9},  // 9
-      {label:'Left', row:'N', from:1,  to:8},  // 8
-      {label:'Left', row:'O', from:1,  to:8},  // 8
-      {label:'Left', row:'P', from:1,  to:8},  // 8
-      {label:'Left', row:'Q', from:1,  to:8},  // 8
-      {label:'Left', row:'R', from:1,  to:8},  // 8  → left = 58
-      // RIGHT section — numbering continues from left (L:10-18, M:10-18, N:9-16, O-R:9-16)
-      {label:'Right', row:'L', from:10, to:18}, // 9
-      {label:'Right', row:'M', from:10, to:18}, // 9
-      {label:'Right', row:'N', from:9,  to:16}, // 8
-      {label:'Right', row:'O', from:9,  to:16}, // 8
-      {label:'Right', row:'P', from:9,  to:16}, // 8
-      {label:'Right', row:'Q', from:9,  to:16}, // 8
-      {label:'Right', row:'R', from:9,  to:16}, // 8  → right = 58, total = 116
+    note:'Family & Single members',
+    sections:[
+      { title:'Family Members', rows:[
+        {row:'L', from:1, to:5},
+        {row:'M', from:1, to:5},
+        {row:'N', from:1, to:5},
+        {row:'O', from:1, to:5},
+        {row:'P', from:1, to:13},
+        {row:'Q', from:1, to:13},
+        {row:'R', from:1, to:12},
+      ]},
+      { title:'Single Members', rows:[
+        {row:'L', from:6,  to:10},
+        {row:'M', from:25, to:29},
+        {row:'N', from:25, to:29},
+        {row:'O', from:26, to:30},
+        {row:'P', from:14, to:26},
+        {row:'Q', from:14, to:26},
+        {row:'R', from:13, to:24},
+      ]},
     ]
   },
   {
     key:'ORS', name:'ORs', full:'Other Ranks',
-    note:'Rows A–K · Closest to screen · Continuous seat numbering across all blocks',
-    blocks:[
-      // Left block: all rows, seats 1-10
-      {label:'Left',   rows:['A','B','C','D','E','F','G','H','I','J','K'], from:1,  to:10},
-      // Centre tapering block: starts at 11, ends vary by row
-      {label:'Centre', row:'K', from:11, to:26}, // 16 → Right: 27-36
-      {label:'Centre', row:'J', from:11, to:26}, // 16 → Right: 27-36
-      {label:'Centre', row:'I', from:11, to:26}, // 16 → Right: 27-36
-      {label:'Centre', row:'H', from:11, to:25}, // 15 → Right: 26-35
-      {label:'Centre', row:'G', from:11, to:23}, // 13 → Right: 24-33
-      {label:'Centre', row:'F', from:11, to:23}, // 13 → Right: 24-33
-      {label:'Centre', row:'E', from:11, to:22}, // 12 → Right: 23-32
-      {label:'Centre', row:'D', from:11, to:22}, // 12 → Right: 23-32
-      {label:'Centre', row:'C', from:11, to:21}, // 11 → Right: 22-31
-      {label:'Centre', row:'B', from:11, to:21}, // 11 → Right: 22-31
-      {label:'Centre', row:'A', from:11, to:21}, // 11 → Right: 22-31
-      // Right block: continues from centre-end+1 per row (10 seats each)
-      {label:'Right',  row:'K', from:27, to:36},
-      {label:'Right',  row:'J', from:27, to:36},
-      {label:'Right',  row:'I', from:27, to:36},
-      {label:'Right',  row:'H', from:26, to:35},
-      {label:'Right',  row:'G', from:24, to:33},
-      {label:'Right',  row:'F', from:24, to:33},
-      {label:'Right',  row:'E', from:23, to:32},
-      {label:'Right',  row:'D', from:23, to:32},
-      {label:'Right',  row:'C', from:22, to:31},
-      {label:'Right',  row:'B', from:22, to:31},
-      {label:'Right',  row:'A', from:22, to:31},
+    note:'Single (seats 1–10) & Family (seats 11+) members',
+    sections:[
+      { title:'Single Members', rows: ORS_ROWS.map(r=>({row:r, from:1,  to:10})) },
+      { title:'Family Members', rows: ORS_ROWS.map(r=>({row:r, from:11, to:ORS_MAX[r]})) },
     ]
   },
   {
     key:'VIP', name:'VIP', full:'VIP Sofas (not bookable)',
     note:'Front row · Display only',
-    blocks:[
-      {label:'VIP', row:'VIP', from:1, to:11}
+    sections:[
+      { title:'', rows:[ {row:'VIP', from:1, to:11} ] }
     ]
   }
 ];
 
-// Flatten CATEGORIES into a simple structure the rest of the app uses
-// For ORS we also store per-row block info so the seat map can render 3 columns
+// Flatten CATEGORIES: expand each section's rows into explicit seat-number lists.
 function buildFlatCategories(){
   return CATEGORIES.map(cat=>{
-    const rowMap = {};
-    cat.blocks.forEach(blk=>{
-      const rowList = blk.rows || [blk.row];
-      rowList.forEach(r=>{
-        if(!rowMap[r]) rowMap[r] = {all:new Set(), blocks:[]};
-        const bseats = [];
-        for(let s=blk.from; s<=blk.to; s++){ rowMap[r].all.add(s); bseats.push(s); }
-        rowMap[r].blocks.push({label:blk.label, seats:bseats});
+    let total = 0;
+    const sections = cat.sections.map(sec=>{
+      const rows = sec.rows.map(r=>{
+        const seats = [];
+        for(let s=r.from; s<=r.to; s++) seats.push(s);
+        total += seats.length;
+        return { label:r.row, seats };
       });
+      return { title: sec.title || '', rows };
     });
-    let rowOrder;
-    if(cat.key==='ORS')        rowOrder = ['A','B','C','D','E','F','G','H','I','J','K'];
-    else if(cat.key==='OFFRS'||cat.key==='JCOS') rowOrder = ['L','M','N','O','P','Q','R'];
-    else rowOrder = ['VIP'];
-    const rows = rowOrder
-      .filter(r=>rowMap[r] && rowMap[r].all.size>0)
-      .map(r=>({
-        label:r,
-        seats:[...rowMap[r].all].sort((a,b)=>a-b),
-        blocks: rowMap[r].blocks
-      }));
-    const total = rows.reduce((s,r)=>s+r.seats.length,0);
-    return {key:cat.key, name:cat.name, full:cat.full, note:cat.note||'', rows, total, bookable:cat.key!=='VIP'};
+    return { key:cat.key, name:cat.name, full:cat.full, note:cat.note||'',
+             sections, total, bookable: cat.key!=='VIP' };
   });
 }
 const FLAT_CATS = buildFlatCategories();
@@ -1186,74 +1185,29 @@ function renderBooking(){
     const vip = FLAT_CATS.find(c=>c.key==='VIP');
     if(vip){
       html += `<div class="vip-row"><span class="vip-label">VIP</span>`;
-      vip.rows[0].seats.forEach(()=>{
+      vip.sections[0].rows[0].seats.forEach(()=>{
         html += `<div class="vip-sofa"></div>`;
       });
       html += `<span class="vip-note">(not for booking)</span></div>`;
     }
-    html += `<div class="seat-grid">`;
 
-    if(cat.key === 'ORS'){
-      // ORS: render each row as 3 columns — Left (1-10) | Centre (tapering) | Right (27-36)
-      // Find the widest centre block to normalise alignment
-      const maxCentre = Math.max(...cat.rows.map(r=>{
-        const cb = r.blocks.find(b=>b.label==='Centre');
-        return cb ? cb.seats.length : 0;
-      }));
-      cat.rows.forEach(r=>{
-        const leftB   = r.blocks.find(b=>b.label==='Left')   || {seats:[]};
-        const centreB = r.blocks.find(b=>b.label==='Centre') || {seats:[]};
-        const rightB  = r.blocks.find(b=>b.label==='Right')  || {seats:[]};
-        html += `<div class="seat-row ors-row">`;
-        html += `<span class="row-label">${r.label}</span>`;
-        // Left block
-        html += `<div class="ors-block ors-left">`;
-        leftB.seats.forEach(n=>{
-          const sid=seatId(cat.key,r.label,n), booked=isBooked(sid), sel=selectedSeats.includes(sid);
-          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
-        });
-        html += `</div>`;
-        // Centre block — pad with ghost seats to keep max-width consistent
-        const padLeft  = Math.floor((maxCentre - centreB.seats.length)/2);
-        const padRight = maxCentre - centreB.seats.length - padLeft;
-        html += `<div class="ors-block ors-centre">`;
-        for(let p=0;p<padLeft;p++)  html += `<div class="seat ghost"></div>`;
-        centreB.seats.forEach(n=>{
-          const sid=seatId(cat.key,r.label,n), booked=isBooked(sid), sel=selectedSeats.includes(sid);
-          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
-        });
-        for(let p=0;p<padRight;p++) html += `<div class="seat ghost"></div>`;
-        html += `</div>`;
-        // Right block — continuous from centre-end+1
-        html += `<div class="ors-block ors-right">`;
-        rightB.seats.forEach(n=>{
-          const sid=seatId(cat.key,r.label,n), booked=isBooked(sid), sel=selectedSeats.includes(sid);
-          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
-        });
-        html += `</div>`;
-        html += `<span class="row-label">${r.label}</span>`;
-        html += `</div>`;
-      });
-
-    } else {
-      // Standard: OFFRS and JCOS
-      cat.rows.forEach(r=>{
+    // Render each section (with its title) as its own seat-grid card so the
+    // Family / Single distinction is visually clear.
+    cat.sections.forEach(sec=>{
+      if(sec.title) html += `<div class="section-title">${sec.title}</div>`;
+      html += `<div class="seat-grid">`;
+      sec.rows.forEach(r=>{
         html += `<div class="seat-row"><span class="row-label">${r.label}</span>`;
         r.seats.forEach(n=>{
           const sid = seatId(cat.key, r.label, n);
           const booked = isBooked(sid);
           const sel = selectedSeats.includes(sid);
-          // For JCOs: insert visual aisle between left and right sections
-          if(cat.key==='JCOS'){
-            const leftEnd = (r.label==='L'||r.label==='M') ? 9 : 8;
-            if(n === leftEnd+1) html += `<div class="aisle"></div>`;
-          }
           html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
         });
-        html += `</div>`;
+        html += `<span class="row-label">${r.label}</span></div>`;
       });
-    }
-    html += `</div>`;
+      html += `</div>`;
+    });
 
     html += `<div class="legend">
       <span><i class="e"></i> Available</span>
@@ -1732,9 +1686,68 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
+/* ---------- USER SELF-CANCEL (by ticket number) ---------- */
+function openCancelModal(){
+  document.getElementById('cancelModal').classList.add('open');
+  document.getElementById('cancelError').classList.remove('show');
+  document.getElementById('cancelSuccess').classList.remove('show');
+  document.getElementById('cancelDetails').innerHTML = '';
+  const b = document.getElementById('cancelLookupBtn');
+  b.textContent = 'Find Booking'; b.onclick = lookupCancel; b.disabled = false; b.style.display = '';
+  setTimeout(()=>document.getElementById('cancelTicketInput').focus(), 80);
+}
+function closeCancelModal(){
+  document.getElementById('cancelModal').classList.remove('open');
+  document.getElementById('cancelTicketInput').value = '';
+  document.getElementById('cancelDetails').innerHTML = '';
+}
+function lookupCancel(){
+  const tno = document.getElementById('cancelTicketInput').value.trim().toUpperCase();
+  const err = document.getElementById('cancelError'), succ = document.getElementById('cancelSuccess');
+  err.classList.remove('show'); succ.classList.remove('show');
+  if(!tno) return;
+  const booking = bookingFromTicketNo(tno);
+  if(!booking){
+    err.textContent = 'No booking found for ticket ' + tno + '.';
+    err.classList.add('show');
+    document.getElementById('cancelDetails').innerHTML = '';
+    return;
+  }
+  const cat = FLAT_CATS.find(c=>c.key===booking.category);
+  document.getElementById('cancelDetails').innerHTML = `<div class="summary" style="margin-top:2px;">
+    <b>${escapeHtml(booking.movie) || 'Movie'}</b><br>
+    ${escapeHtml(booking.showDateLabel || booking.showDate)} — ${formatSlot(booking.slot)}<br>
+    ${cat ? cat.name : booking.category} · Seats: <b>${booking.seats.map(s=>seatLabel(s)).join(', ')}</b>
+  </div>`;
+  const b = document.getElementById('cancelLookupBtn');
+  b.textContent = 'Cancel This Booking';
+  b.onclick = ()=>confirmCancelBooking(tno);
+}
+async function confirmCancelBooking(tno){
+  const b = document.getElementById('cancelLookupBtn');
+  const err = document.getElementById('cancelError'), succ = document.getElementById('cancelSuccess');
+  err.classList.remove('show');
+  b.disabled = true; b.textContent = 'Cancelling…';
+  try {
+    await fbCancelBooking(tno);
+    document.getElementById('cancelDetails').innerHTML = '';
+    succ.textContent = 'Booking ' + tno + ' cancelled — your seats have been released.';
+    succ.classList.add('show');
+    b.style.display = 'none';
+    document.getElementById('cancelTicketInput').value = '';
+  } catch(e){
+    err.textContent = 'Could not cancel (' + (e.code || e.message) + '). Please try again.';
+    err.classList.add('show');
+    b.disabled = false; b.textContent = 'Cancel This Booking';
+  }
+}
+
 /* ---------- INIT ---------- */
 document.getElementById('adminModal').addEventListener('click', function(e){
   if(e.target === this) closeAdminLogin();
+});
+document.getElementById('cancelModal').addEventListener('click', function(e){
+  if(e.target === this) closeCancelModal();
 });
 render();
 </script>
