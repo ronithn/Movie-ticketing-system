@@ -203,6 +203,13 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .legend .e{background:var(--seat-empty);}
 .legend .s{background:var(--gold); border-color:var(--gold-deep);}
 .legend .b{background:var(--seat-booked); border-color:#a8a098;}
+.legend .tf{background:#e6edf7; border-color:#9db4d6;}
+.legend .ts{background:#e6f2ea; border-color:#9dccb4;}
+/* Member-type colour coding, shown only on available seats (booked/selected win). */
+.seat.t-family:not(.booked):not(.selected){ background:#e6edf7; border-color:#c3d2ea; }
+.seat.t-single:not(.booked):not(.selected){ background:#e6f2ea; border-color:#c3e2ce; }
+.seat.t-family:not(.booked):not(.selected):hover,
+.seat.t-single:not(.booked):not(.selected):hover{ background:#f1e3c4; border-color:var(--gold); }
 .aisle{ width:14px; }
 .section-title{
   text-align:center;
@@ -828,21 +835,33 @@ const CATEGORIES = [
   }
 ];
 
-// Flatten CATEGORIES: expand each section's rows into explicit seat-number lists.
+// Flatten CATEGORIES into a single per-category seat map. Each seat carries its
+// member type ('family' | 'single' | '') derived from its section, so the one
+// map can colour-code the two groups instead of splitting into separate grids.
 function buildFlatCategories(){
   return CATEGORIES.map(cat=>{
     let total = 0;
-    const sections = cat.sections.map(sec=>{
-      const rows = sec.rows.map(r=>{
-        const seats = [];
-        for(let s=r.from; s<=r.to; s++) seats.push(s);
-        total += seats.length;
-        return { label:r.row, seats };
+    const rowMap = {};
+    const typesPresent = new Set();
+    cat.sections.forEach(sec=>{
+      const type = /family/i.test(sec.title) ? 'family'
+                 : /single/i.test(sec.title) ? 'single' : '';
+      if(type) typesPresent.add(type);
+      sec.rows.forEach(r=>{
+        if(!rowMap[r.row]) rowMap[r.row] = [];
+        for(let s=r.from; s<=r.to; s++){ rowMap[r.row].push({n:s, type}); total++; }
       });
-      return { title: sec.title || '', rows };
     });
+    let order;
+    if(cat.key==='ORS') order = ORS_ROWS;
+    else if(cat.key==='VIP') order = ['VIP'];
+    else order = ['L','M','N','O','P','Q','R'];
+    const rows = order.filter(l=>rowMap[l]).map(l=>({
+      label: l,
+      seats: rowMap[l].slice().sort((a,b)=>a.n-b.n)
+    }));
     return { key:cat.key, name:cat.name, full:cat.full, note:cat.note||'',
-             sections, total, bookable: cat.key!=='VIP' };
+             rows, total, bookable: cat.key!=='VIP', types:[...typesPresent] };
   });
 }
 const FLAT_CATS = buildFlatCategories();
@@ -1185,35 +1204,41 @@ function renderBooking(){
     const vip = FLAT_CATS.find(c=>c.key==='VIP');
     if(vip){
       html += `<div class="vip-row"><span class="vip-label">VIP</span>`;
-      vip.sections[0].rows[0].seats.forEach(()=>{
+      vip.rows[0].seats.forEach(()=>{
         html += `<div class="vip-sofa"></div>`;
       });
       html += `<span class="vip-note">(not for booking)</span></div>`;
     }
 
-    // Render each section (with its title) as its own seat-grid card so the
-    // Family / Single distinction is visually clear.
-    cat.sections.forEach(sec=>{
-      if(sec.title) html += `<div class="section-title">${sec.title}</div>`;
-      html += `<div class="seat-grid">`;
-      sec.rows.forEach(r=>{
-        html += `<div class="seat-row"><span class="row-label">${r.label}</span>`;
-        r.seats.forEach(n=>{
-          const sid = seatId(cat.key, r.label, n);
-          const booked = isBooked(sid);
-          const sel = selectedSeats.includes(sid);
-          html += `<div class="seat ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}">${n}</div>`;
-        });
-        html += `<span class="row-label">${r.label}</span></div>`;
+    // Single seat map per category. Family and single seats are colour-coded
+    // (see legend) and separated by a small aisle within each row, rather than
+    // being split into separate section grids.
+    html += `<div class="seat-grid">`;
+    cat.rows.forEach(r=>{
+      html += `<div class="seat-row"><span class="row-label">${r.label}</span>`;
+      let prevType = null;
+      r.seats.forEach(seat=>{
+        const { n, type } = seat;
+        if(prevType !== null && type !== prevType) html += `<div class="aisle"></div>`;
+        prevType = type;
+        const sid = seatId(cat.key, r.label, n);
+        const booked = isBooked(sid);
+        const sel = selectedSeats.includes(sid);
+        const tcls = type ? ('t-'+type) : '';
+        html += `<div class="seat ${tcls} ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}${type?' · '+type+' member':''}">${n}</div>`;
       });
-      html += `</div>`;
+      html += `<span class="row-label">${r.label}</span></div>`;
     });
+    html += `</div>`;
 
-    html += `<div class="legend">
+    let legend = `<div class="legend">
       <span><i class="e"></i> Available</span>
       <span><i class="s"></i> Selected</span>
-      <span><i class="b"></i> Booked</span>
-    </div>`;
+      <span><i class="b"></i> Booked</span>`;
+    if(cat.types.includes('family')) legend += `<span><i class="tf"></i> Family member</span>`;
+    if(cat.types.includes('single')) legend += `<span><i class="ts"></i> Single member</span>`;
+    legend += `</div>`;
+    html += legend;
 
     html += renderBookingForm(cat);
   }
