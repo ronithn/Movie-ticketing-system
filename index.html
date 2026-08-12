@@ -1096,12 +1096,22 @@ function fitSeats(){
     const rows = [...grid.querySelectorAll('.seat-row')];
     const gl = grid.querySelector('.group-labels');
     if(mobile){
-      // Mobile: keep seats at their natural size and scroll horizontally instead
-      // of shrinking.
+      // Mobile: keep seats at natural size and scroll. Make every row the width
+      // of the widest row (seats centred within) so the map looks centred like
+      // desktop, then start the scroll in the middle so the centre is in focus
+      // and the user can swipe left/right.
       grid.style.removeProperty('--seat-size');
       grid.style.removeProperty('--seat-gap');
       grid.style.removeProperty('--seat-font');
-    } else if(rows.length){
+      rows.forEach(r=> r.style.width = '');                 // reset before measuring
+      const w = rows.length ? Math.max(0, ...rows.map(r=>r.scrollWidth)) : 0;
+      rows.forEach(r=> r.style.width = w ? w + 'px' : '');   // uniform width, content centred
+      if(gl) gl.style.width = w ? w + 'px' : '';
+      if(w) grid.scrollLeft = Math.max(0, (grid.scrollWidth - grid.clientWidth) / 2);
+      return;
+    }
+    rows.forEach(r=> r.style.width = '');   // desktop: natural width, align-items centres rows
+    if(rows.length){
       // Desktop/tablet: shrink seats so the widest row fits (no scroll).
       let maxSeats = 0, maxAisle = 0;
       rows.forEach(r=>{
