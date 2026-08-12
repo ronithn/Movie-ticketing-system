@@ -1555,6 +1555,19 @@ function firstBooking(){
   bs.forEach(r=>{ const k = keyOf(r); if(k < min){ min = k; first = r; } });
   return first;
 }
+// Most-booked movie (by the title stored on each booking). byTickets=true counts
+// distinct bookings; false counts seats.
+function popularMovie(byTickets = true){
+  const counts = {}, seen = new Set();
+  STATE.bookings.forEach(r=>{
+    const m = (r.movie || '').trim();
+    if(!m) return;                                     // ignore bookings with no movie recorded
+    if(byTickets){ if(seen.has(r.ticketNo)) return; seen.add(r.ticketNo); }
+    counts[m] = (counts[m] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  return top ? { movie: top[0], count: top[1] } : null;
+}
 
 function renderAdmin(){
   const movie = STATE.movie;
@@ -1593,6 +1606,12 @@ function renderAdmin(){
         <div class="stat-label">First booking made</div>
         <div class="stat-value">${f ? escapeHtml(f.bookedAt || fmtDayKey(f.showDate)) : '—'}</div>
         <div class="stat-sub">${f ? escapeHtml([f.ticketNo, f.name].filter(Boolean).join(' · ')) : 'No bookings yet'}</div>
+      </div>`; })()}
+      ${(()=>{ const pm = popularMovie(true); return `
+      <div class="stat-tile">
+        <div class="stat-label">Most popular movie</div>
+        <div class="stat-value">${pm ? escapeHtml(pm.movie) : '—'}</div>
+        <div class="stat-sub">${pm ? pm.count + ' booking' + (pm.count>1?'s':'') : 'No bookings yet'}</div>
       </div>`; })()}
     </div>
   </div>`;
