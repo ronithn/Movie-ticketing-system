@@ -208,11 +208,18 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .legend .b{background:var(--seat-booked); border-color:#a8a098;}
 .legend .tf{background:#e6edf7; border-color:#9db4d6;}
 .legend .ts{background:#e6f2ea; border-color:#9dccb4;}
-/* Member-type colour coding, shown only on available seats (booked/selected win). */
-.seat.t-family:not(.booked):not(.selected){ background:#e6edf7; border-color:#c3d2ea; }
-.seat.t-single:not(.booked):not(.selected){ background:#e6f2ea; border-color:#c3e2ce; }
-.seat.t-family:not(.booked):not(.selected):hover,
-.seat.t-single:not(.booked):not(.selected):hover{ background:#f1e3c4; border-color:var(--gold); }
+.legend .ri{background:var(--maroon); border-color:var(--maroon-deep);}
+.legend .mi{background:#e67e22; border-color:#c0610a;}
+.seat-guide{ text-align:center; font-size:.8rem; color:#6b5f54; margin:-8px auto 18px; padding:8px 16px; background:#fff; border:1px solid var(--line); border-radius:8px; max-width:640px; }
+/* Member-type colour coding, shown only on selectable seats (states below win). */
+.seat.t-family:not(.booked):not(.selected):not(.offline-reserved):not(.media-blocked){ background:#e6edf7; border-color:#c3d2ea; }
+.seat.t-single:not(.booked):not(.selected):not(.offline-reserved):not(.media-blocked){ background:#e6f2ea; border-color:#c3e2ce; }
+.seat.t-family:not(.booked):not(.selected):not(.offline-reserved):not(.media-blocked):hover,
+.seat.t-single:not(.booked):not(.selected):not(.offline-reserved):not(.media-blocked):hover{ background:#f1e3c4; border-color:var(--gold); }
+/* Reserved (offline) — maroon; Media/photographer — orange. Not selectable. */
+.seat.offline-reserved{ background:var(--maroon); border-color:var(--maroon-deep); color:#e8d0a0; cursor:not-allowed; }
+.seat.media-blocked{ background:#e67e22; border-color:#c0610a; color:#fff; cursor:not-allowed; }
+.seat.offline-reserved:hover, .seat.media-blocked{ box-shadow:none; }
 .aisle{ width:calc(var(--seat-gap, 5px) * 2); flex:0 0 auto; }
 /* FAMILY / SINGLE group labels under the seat map (aligned to each group). */
 .group-labels{ display:flex; align-items:stretch; gap:var(--seat-gap, 5px); flex-wrap:nowrap; width:100%; margin-top:6px; }
@@ -782,6 +789,31 @@ onSnapshot(collection(db, 'movieLog'), snap => {
 const ORS_MAX = {A:31,B:31,C:31,D:32,E:32,F:33,G:33,H:35,I:36,J:36,K:36};
 const ORS_ROWS = ['A','B','C','D','E','F','G','H','I','J','K'];
 
+/* ---- Blocked ORs seats (not bookable): offline-reserved + media ---- */
+// Reserved (offline): the two lowest + two highest seats of rows A–F.
+const RESERVED_ROWS = ['A','B','C','D','E','F'];
+function isOfflineReserved(cat, row, n){
+  if(cat !== 'ORS' || !RESERVED_ROWS.includes(row)) return false;
+  const mx = ORS_MAX[row];
+  return n === 1 || n === 2 || n === mx || n === mx - 1;
+}
+// Media/photographer: seats 15–19 of rows C and D.
+const MEDIA_SEATS = { C:[15,16,17,18,19], D:[15,16,17,18,19] };
+function isMediaSeat(cat, row, n){
+  return cat === 'ORS' && MEDIA_SEATS[row] && MEDIA_SEATS[row].includes(n);
+}
+function isSeatBlocked(cat, row, n){
+  return isOfflineReserved(cat, row, n) || isMediaSeat(cat, row, n);
+}
+// Fixed count of blocked seats in a category (for the availability total).
+function blockedCountFor(catKey){
+  const c = FLAT_CATS.find(x=>x.key===catKey);
+  if(!c) return 0;
+  let count = 0;
+  c.rows.forEach(r=> r.seats.forEach(s=>{ if(isSeatBlocked(catKey, r.label, s.n)) count++; }));
+  return count;
+}
+
 const CATEGORIES = [
   {
     key:'OFFRS', name:'OFFRs', full:'Officers',
@@ -858,7 +890,7 @@ function buildFlatCategories(){
     else order = ['L','M','N','O','P','Q','R'];
     const rows = order.filter(l=>rowMap[l]).map(l=>({
       label: l,
-      seats: rowMap[l].slice().sort((a,b)=>a.n-b.n)
+      seats: rowMap[l].slice().sort((a,b)=>b.n-a.n)   // descending → seat 1 on the right (RTL)
     }));
     return { key:cat.key, name:cat.name, full:cat.full, note:cat.note||'',
              rows, total, bookable: cat.key!=='VIP', types:[...typesPresent] };
@@ -1245,12 +1277,13 @@ function renderBooking(){
 
   html += `<div class="cats">`;
   BOOKABLE_CATS.forEach(c=>{
-    const booked = bookedCountFor(c.key);
-    const avail = c.total - booked;
+    const blocked = blockedCountFor(c.key);       // reserved + media (not bookable)
+    const bookable = c.total - blocked;
+    const avail = bookable - bookedCountFor(c.key);
     html += `<div class="cat-card ${selectedCategory===c.key?'active':''}" data-cat="${c.key}">
       <div class="tag">${c.name}</div>
       <div class="full-name">${c.full}</div>
-      <div class="avail">${avail} / ${c.total} available</div>
+      <div class="avail">${avail} / ${bookable} available</div>
     </div>`;
   });
   html += `</div>`;
@@ -1279,10 +1312,15 @@ function renderBooking(){
         if(prevType !== null && type !== prevType) html += `<div class="aisle"></div>`;
         prevType = type;
         const sid = seatId(cat.key, r.label, n);
-        const booked = isBooked(sid);
-        const sel = selectedSeats.includes(sid);
+        const media    = isMediaSeat(cat.key, r.label, n);
+        const reserved = isOfflineReserved(cat.key, r.label, n);
+        const booked   = isBooked(sid);
+        const sel      = selectedSeats.includes(sid);
         const tcls = type ? ('t-'+type) : '';
-        html += `<div class="seat ${tcls} ${booked?'booked':''} ${sel?'selected':''}" data-seat="${sid}" title="Row ${r.label} Seat ${n}${type?' · '+type+' member':''}">${n}</div>`;
+        const stateCls = media ? 'media-blocked' : reserved ? 'offline-reserved' : booked ? 'booked' : (sel ? 'selected' : '');
+        const clickable = !media && !reserved && !booked;
+        const extra = media ? ' · Media/Photographer' : reserved ? ' · Reserved (offline)' : '';
+        html += `<div class="seat ${tcls} ${stateCls}" ${clickable?`data-seat="${sid}"`:''} title="Row ${r.label} Seat ${n}${type?' · '+type+' member':''}${extra}">${n}</div>`;
       });
       html += `<span class="row-label">${r.label}</span></div>`;
     });
@@ -1312,8 +1350,15 @@ function renderBooking(){
       <span><i class="b"></i> Booked</span>`;
     if(cat.types.includes('family')) legend += `<span><i class="tf"></i> Family member</span>`;
     if(cat.types.includes('single')) legend += `<span><i class="ts"></i> Single member</span>`;
+    if(cat.key==='ORS') legend += `<span><i class="ri"></i> Reserved (offline)</span><span><i class="mi"></i> Media</span>`;
     legend += `</div>`;
     html += legend;
+
+    if(cat.key==='ORS'){
+      html += `<div class="seat-guide"><b>Seat guide:</b> Seats 1–10 = Single member · Seats 11+ = Family members ·
+        <span style="color:var(--maroon);">■</span> Reserved (offline) ·
+        <span style="color:#e67e22;">■</span> Media/Photographer</div>`;
+    }
 
     html += renderBookingForm(cat);
   }
@@ -1630,7 +1675,7 @@ function attachHandlers(){
 
   // seat select
   document.querySelectorAll('.seat').forEach(el=>{
-    if(el.classList.contains('booked')) return;
+    if(!el.dataset.seat || el.classList.contains('booked')) return;   // skip blocked/reserved/media
     el.addEventListener('click', ()=>{
       const sid = el.dataset.seat;
       if(selectedSeats.includes(sid)){
