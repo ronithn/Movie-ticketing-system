@@ -94,18 +94,33 @@ of `index.html`. To point the app at your own project:
 2. Create an admin user under Authentication.
 3. Replace the `firebaseConfig` object in `index.html` with your project's config.
 
-Firestore uses four collections:
+Firestore uses five collections:
 
 - `config/movie` — a single document holding the current movie details.
-- `bookings/{showDate_slot_seat}` — one document per booked seat.
+- `occupancy/{showDate_slot}` — **one document per show**, a map of
+  `{ seatId: ticketNo }`. This is the only booking data the public seat map
+  reads (see below).
+- `bookings/{showDate_slot_seat}` — one document per booked seat (the source of
+  truth with contact details). Read live only by a signed-in admin.
 - `weekLocks/{weekStart_mobile}` — one-booking-per-number-per-week locks.
 - `movieLog/{autoId}` — append-only history of movies set by the admin.
+
+**Read model (keeps Firestore costs tiny).** A naïve build subscribes every open
+browser to the whole `bookings` collection, so each visitor continuously
+downloads one read *per booked seat* — thousands of reads per page view, which
+multiplied into tens of millions of reads a week. Instead the public seat map
+subscribes to a single `occupancy/{date}_{slot}` document for the show being
+viewed — **one read per show**. Each booking writes its seats into that doc in the
+same atomic batch that creates the seat docs; each cancellation removes them with
+`deleteField()`. The full `bookings` collection is subscribed only while an admin
+is signed in (for the bookings table and dashboard stats).
 
 **Security rules.** The app depends on rules that let the public create bookings
 and locks (validated) while restricting overwrites, cancels, and movie edits to
 authenticated admins. A booking will fail with `permission-denied` until the rules
-for **all four** collections are published. See the rules block in the project
-notes / `TODO.md` for the exact ruleset to paste into the Firestore console.
+for **all five** collections (including `occupancy`) are published. See the rules
+block in the project notes / `TODO.md` for the exact ruleset to paste into the
+Firestore console.
 
 > Note: a Firebase web `apiKey` is a public client identifier, not a secret.
 > Protect data with Firestore security rules and Authentication, not by hiding

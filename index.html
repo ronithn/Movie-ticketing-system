@@ -648,7 +648,7 @@ footer{
 import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc,
          onSnapshot, addDoc, deleteDoc, setDoc,
-         writeBatch }                                 from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+         writeBatch, query, where, getDocs, getDoc, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword,
          signOut, onAuthStateChanged }                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
@@ -668,7 +668,7 @@ const auth = getAuth(app);
 // Expose to main script
 window.__db   = db;
 window.__auth = auth;
-window.__fs   = { collection, doc, onSnapshot, addDoc, deleteDoc, setDoc, writeBatch };
+window.__fs   = { collection, doc, onSnapshot, addDoc, deleteDoc, setDoc, writeBatch, query, where, getDocs, getDoc, deleteField };
 window.__fbAuth = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
 window.__firebaseReady = true;
 
@@ -676,38 +676,38 @@ window.__firebaseReady = true;
 onAuthStateChanged(auth, user => {
   window.__adminUser = user || null;
   if(typeof updateAdminBtn === 'function') updateAdminBtn();
+  // Load the full bookings collection only while an admin is signed in; detach it
+  // (and clear STATE.bookings) on logout so ordinary visitors never download it.
+  if(typeof window.__subscribeAdminBookings === 'function') window.__subscribeAdminBookings(!!user);
   if(!user && typeof currentView !== 'undefined' && currentView === 'admin'){
     switchView('booking');
   }
 });
 
-// Real-time bookings listener.
-// STATE.bookings is normalised to a flat list of per-seat reservations. New
-// docs are already per-seat; any legacy per-booking docs (with a `seats` array)
-// are expanded in memory so the two shapes can coexist during the transition.
-onSnapshot(collection(db, 'bookings'), snap => {
-  const out = [];
-  snap.docs.forEach(d => {
-    const data = d.data();
-    if (Array.isArray(data.seats)) {
-      data.seats.forEach(seat => out.push({
-        id: d.id, showDate: data.showDate, slot: data.slot, category: data.category,
-        seat, ticketNo: data.ticketNo || d.id, name: data.name, mobile: data.mobile,
-        movie: data.movie, showDateLabel: data.showDateLabel, bookedAt: data.date || data.bookedAt
-      }));
-    } else {
-      out.push({ ...data, id: d.id });
-    }
-  });
-  window.STATE.bookings = out;
-  if(typeof render === 'function') render();
-  const el = null;
-  if(el){ el.textContent='🟢 Live'; el.className='sync-status live'; }
-}, err => {
-  console.error('Bookings error:', err);
-  const el = null;
-  if(el){ el.textContent='🔴 Offline'; el.className='sync-status offline'; }
-});
+// --- READ MODEL (keeps Firestore reads tiny) ---
+// The public seat map reads ONE occupancy document per show — occupancy/{date}_{slot},
+// a map of { seatId: ticketNo } — instead of downloading the whole bookings
+// collection. The main script re-subscribes whenever the date/slot changes.
+window.__subscribeOccupancy = function(showKey, slot){
+  if(window.__unsubOcc) window.__unsubOcc();
+  const id = showKey + '_' + slot;
+  window.__unsubOcc = onSnapshot(doc(db, 'occupancy', id), snap => {
+    window.STATE.occupancy = snap.exists() ? (snap.data().seats || {}) : {};
+    if(typeof render === 'function') render();
+  }, err => { console.warn('occupancy listener:', err.code); });
+};
+
+// Admin only: the full bookings collection (one doc per seat) for the bookings
+// table + stats. Subscribed on admin login, detached on logout.
+window.__subscribeAdminBookings = function(on){
+  if(window.__unsubAdm){ window.__unsubAdm(); window.__unsubAdm = null; window.STATE.bookings = []; }
+  if(on){
+    window.__unsubAdm = onSnapshot(collection(db, 'bookings'), snap => {
+      window.STATE.bookings = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      if(typeof render === 'function') render();
+    }, err => { console.warn('admin bookings listener:', err.code); });
+  }
+};
 
 // Real-time movie config listener
 onSnapshot(doc(db, 'config', 'movie'), snap => {
@@ -723,6 +723,11 @@ onSnapshot(collection(db, 'movieLog'), snap => {
 }, err => {
   console.warn('movieLog unavailable (add Firestore rules for it):', err.code);
 });
+
+// The classic script below ran during parse (before this deferred module), so it
+// couldn't start the occupancy listener itself. Now that __db and the subscribe
+// helpers exist, point the listener at the initially-selected show.
+if(typeof window.__syncOccupancySub === 'function') window.__syncOccupancySub();
 </script>
 <body>
 
@@ -951,6 +956,12 @@ let selectedSlot = slotsForDate(selectedDate)[0] || '18:30';
 /* ---------- STATE (Firebase-backed, real-time) ---------- */
 let STATE = {
   movie:    {title:'',poster:'',show_time:'',synopsis:'',director:'',cast:'',duration:'',language:'',genre:''},
+  // occupancy: seats taken for the CURRENTLY-selected show, as { seatId: ticketNo }.
+  // Read from a single occupancy/{date}_{slot} doc so the public seat map costs
+  // one read per show instead of downloading the whole bookings collection.
+  occupancy: {},
+  // bookings: full per-seat reservation docs. Only populated for the admin
+  // (subscribed on login) — used by the bookings table and dashboard stats.
   bookings: [],
   movieLog: []   // append-only history of movies the admin has set, with timestamps
 };
@@ -989,21 +1000,38 @@ async function fbAddBooking(reservations, lock){
   const batch = writeBatch(window.__db);
   reservations.forEach(r => batch.set(doc(window.__db, 'bookings', r.id), r.data));
   if(lock) batch.set(doc(window.__db, 'weekLocks', lock.id), lock.data);
+  // Mirror these seats into the per-show occupancy doc (occupancy/{date}_{slot}),
+  // the one document the public seat map reads. merge:true keeps seats already
+  // booked by others. All seats of one booking share the same show.
+  if(reservations.length){
+    const f = reservations[0].data;
+    const seats = {};
+    reservations.forEach(r => { seats[r.data.seat] = r.data.ticketNo; });
+    batch.set(doc(window.__db, 'occupancy', `${f.showDate}_${f.slot}`), { seats }, { merge:true });
+  }
   await batch.commit();
 }
 
 // Cancelling a ticket releases every seat that shares its ticketNo, and frees the
 // number's weekly lock so they may book again that week.
 async function fbCancelBooking(ticketNo){
-  const { doc, writeBatch } = window.__fs;
-  const rs = STATE.bookings.filter(r => r.ticketNo === ticketNo);
-  const ids = [...new Set(rs.map(r => r.id))];
-  if(!ids.length) return;
+  const { doc, collection, writeBatch, query, where, getDocs, deleteField } = window.__fs;
+  // Public clients no longer hold the whole bookings collection, so look up this
+  // ticket's seat docs directly (a small equality query, not a live listener).
+  const snap = await getDocs(query(collection(window.__db,'bookings'), where('ticketNo','==',ticketNo)));
+  if(snap.empty) return;
+  const rs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
   const batch = writeBatch(window.__db);
-  ids.forEach(id => batch.delete(doc(window.__db, 'bookings', id)));
+  rs.forEach(r => batch.delete(doc(window.__db, 'bookings', r.id)));
   const f = rs[0];
   if(f && f.mobile && f.showDate){
     batch.delete(doc(window.__db, 'weekLocks', `${weekStartKey(f.showDate)}_${f.mobile}`));
+  }
+  // Release the seats in the per-show occupancy doc so the map updates live.
+  if(f && f.showDate && f.slot){
+    const upd = {};
+    rs.forEach(r => { upd['seats.'+r.seat] = deleteField(); });
+    batch.update(doc(window.__db, 'occupancy', `${f.showDate}_${f.slot}`), upd);
   }
   await batch.commit();
 }
@@ -1020,17 +1048,47 @@ function seatLabel(sid){
   const dash = sid.indexOf('-');
   return sid.slice(dash+1);
 }
+// (Re)point the occupancy listener at the currently-selected show. Called on
+// every date/slot change and once the Firebase module is ready.
+function syncOccupancySub(){
+  if(typeof window.__subscribeOccupancy === 'function'){
+    window.__subscribeOccupancy(dateKey(selectedDate), selectedSlot);
+  }
+}
+window.__syncOccupancySub = syncOccupancySub;
+
+// Seat availability for the selected show comes from STATE.occupancy — the single
+// occupancy/{date}_{slot} doc the seat map subscribes to — not from the (admin-only)
+// full bookings list.
 function isBooked(seatID){
-  return STATE.bookings.some(r => r.showDate===dateKey(selectedDate) && r.slot===selectedSlot && r.seat===seatID);
+  return !!(STATE.occupancy && STATE.occupancy[seatID]);
 }
 function bookedCountFor(catKey){
-  return STATE.bookings.filter(r=>r.showDate===dateKey(selectedDate) && r.slot===selectedSlot && r.category===catKey).length;
+  const occ = STATE.occupancy || {};
+  const prefix = catKey + '-';
+  return Object.keys(occ).filter(sid => sid.startsWith(prefix)).length;
 }
 // Re-assemble the per-seat reservations of one ticket back into a single
 // booking object (used by the ticket view and PDF).
 function bookingFromTicketNo(ticketNo){
   const rs = STATE.bookings.filter(r => r.ticketNo === ticketNo);
   if(!rs.length) return null;
+  const f = rs[0];
+  return {
+    ticketNo, category:f.category, name:f.name, mobile:f.mobile, slot:f.slot,
+    showDate:f.showDate, showDateLabel:f.showDateLabel, movie:f.movie,
+    seats: rs.map(r=>r.seat), date:f.bookedAt
+  };
+}
+// Async variant for public clients (which don't hold the full bookings list):
+// query Firestore for the ticket's seat docs and re-assemble the booking.
+async function fetchBookingByTicketNo(ticketNo){
+  const local = bookingFromTicketNo(ticketNo);       // admin path — already in memory
+  if(local) return local;
+  const { collection, query, where, getDocs } = window.__fs;
+  const snap = await getDocs(query(collection(window.__db,'bookings'), where('ticketNo','==',ticketNo)));
+  if(snap.empty) return null;
+  const rs = snap.docs.map(d => d.data());
   const f = rs[0];
   return {
     ticketNo, category:f.category, name:f.name, mobile:f.mobile, slot:f.slot,
@@ -1719,6 +1777,7 @@ function attachHandlers(){
       const slots = slotsForDate(selectedDate);
       selectedSlot = slots[0] || selectedSlot;
       selectedSeats = [];
+      syncOccupancySub();
       render();
     });
   });
@@ -1727,6 +1786,7 @@ function attachHandlers(){
     el.addEventListener('click', ()=>{
       selectedSlot = el.dataset.slot;
       selectedSeats = [];
+      syncOccupancySub();
       render();
     });
   });
@@ -1786,13 +1846,18 @@ function attachHandlers(){
       }
       const showDate = dateKey(selectedDate);
       const weekStart = weekStartKey(showDate);
-      // One booking per mobile number per Fri–Thu week. Friendly pre-check; the
-      // atomic week-lock below is the real guard against races/direct writes.
-      if(STATE.bookings.some(r => r.mobile === mobile && weekStartKey(r.showDate) === weekStart)){
-        alert('This mobile number already has a booking for this week.\n'
-            + 'Only one booking per number is allowed per week (Fri–Thu).');
-        return;
-      }
+      // One booking per mobile number per Fri–Thu week. Friendly pre-check reads
+      // the single week-lock doc; the atomic week-lock write below is the real
+      // guard against races/direct writes.
+      try {
+        const { doc, getDoc } = window.__fs;
+        const lockSnap = await getDoc(doc(window.__db, 'weekLocks', `${weekStart}_${mobile}`));
+        if(lockSnap.exists()){
+          alert('This mobile number already has a booking for this week.\n'
+              + 'Only one booking per number is allowed per week (Fri–Thu).');
+          return;
+        }
+      } catch(e){ /* lock read failed — the atomic write below still enforces it */ }
       const ticketNo = genTicketId();
       const slot = selectedSlot;
       const showDateLabel = `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
@@ -1814,8 +1879,10 @@ function attachHandlers(){
       try {
         await fbAddBooking(reservations, lock);
         window._lastBooking = booking;
-        // Optimistically reflect the new seats so occupancy updates instantly.
-        reservations.forEach(r => { if(!STATE.bookings.find(x=>x.id===r.id)) STATE.bookings.push({...r.data, id:r.id}); });
+        // Optimistically reflect the new seats so the map updates instantly,
+        // before the occupancy snapshot round-trips back.
+        STATE.occupancy = STATE.occupancy || {};
+        reservations.forEach(r => { STATE.occupancy[r.data.seat] = r.data.ticketNo; });
         document.getElementById('app').innerHTML = `<div class="hero" style="padding-top:8px;">
           <div class="eyebrow">Booking Confirmed</div>
           <h2>Your Ticket</h2>
@@ -1923,12 +1990,17 @@ function closeCancelModal(){
   document.getElementById('cancelTicketInput').value = '';
   document.getElementById('cancelDetails').innerHTML = '';
 }
-function lookupCancel(){
+async function lookupCancel(){
   const tno = document.getElementById('cancelTicketInput').value.trim().toUpperCase();
   const err = document.getElementById('cancelError'), succ = document.getElementById('cancelSuccess');
   err.classList.remove('show'); succ.classList.remove('show');
   if(!tno) return;
-  const booking = bookingFromTicketNo(tno);
+  const b0 = document.getElementById('cancelLookupBtn');
+  b0.disabled = true; b0.textContent = 'Searching…';
+  let booking = null;
+  try { booking = await fetchBookingByTicketNo(tno); }
+  catch(e){ console.warn('lookup failed:', e.code || e.message); }
+  b0.disabled = false; b0.textContent = 'Find Booking';
   if(!booking){
     err.textContent = 'No booking found for ticket ' + tno + '.';
     err.classList.add('show');
