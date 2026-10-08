@@ -698,30 +698,31 @@ window.__subscribeOccupancy = function(showKey, slot){
 };
 
 // Admin only: the full bookings collection (one doc per seat) for the bookings
-// table + stats. Subscribed on admin login, detached on logout.
+// table + stats, and the screening change-log. Both are admin-only features, so
+// they're subscribed on admin login and detached on logout — ordinary visitors
+// never download them.
 window.__subscribeAdminBookings = function(on){
   if(window.__unsubAdm){ window.__unsubAdm(); window.__unsubAdm = null; window.STATE.bookings = []; }
+  if(window.__unsubLog){ window.__unsubLog(); window.__unsubLog = null; window.STATE.movieLog = []; }
   if(on){
     window.__unsubAdm = onSnapshot(collection(db, 'bookings'), snap => {
       window.STATE.bookings = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       if(typeof render === 'function') render();
     }, err => { console.warn('admin bookings listener:', err.code); });
+    // Screening change-log (history of movies set by admin) — admin panel only.
+    window.__unsubLog = onSnapshot(collection(db, 'movieLog'), snap => {
+      window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      if(typeof render === 'function') render();
+    }, err => { console.warn('movieLog unavailable (add Firestore rules for it):', err.code); });
   }
 };
 
-// Real-time movie config listener
+// Real-time movie config listener — the SINGLE current movie (config/movie).
+// This one doc is all the public page needs; there is only ever one movie at a
+// time, and the full movieLog history is loaded only for admins (above).
 onSnapshot(doc(db, 'config', 'movie'), snap => {
   if(snap.exists()) window.STATE.movie = snap.data();
   if(typeof render === 'function') render();
-});
-
-// Real-time screening change-log listener (history of movies set by admin).
-// Degrades gracefully if rules for `movieLog` haven't been published yet.
-onSnapshot(collection(db, 'movieLog'), snap => {
-  window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-  if(typeof render === 'function') render();
-}, err => {
-  console.warn('movieLog unavailable (add Firestore rules for it):', err.code);
 });
 
 // The classic script below ran during parse (before this deferred module), so it
