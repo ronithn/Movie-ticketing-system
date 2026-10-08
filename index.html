@@ -390,11 +390,6 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 
 /* Admin */
 .admin-grid{display:grid; gap:24px;}
-.stat-tiles{ display:flex; gap:14px; flex-wrap:wrap; }
-.stat-tile{ flex:1 1 180px; background:var(--paper); border:1px solid var(--line); border-left:4px solid var(--gold); border-radius:8px; padding:14px 16px; }
-.stat-label{ font-size:.68rem; text-transform:uppercase; letter-spacing:1px; color:var(--gold-deep); font-weight:700; margin-bottom:6px; }
-.stat-value{ font-family:var(--font-display); font-size:1.25rem; color:var(--maroon-deep); font-weight:600; line-height:1.2; }
-.stat-sub{ font-size:.8rem; color:#6b5f54; margin-top:4px; }
 .panel{
   background:#fff; border:1px solid var(--line); border-left:4px solid var(--maroon); border-radius:8px; padding:24px;
 }
@@ -699,14 +694,12 @@ window.__subscribeOccupancy = function(showKey, slot){
 
 // Admin only: the screening change-log and the per-date bookings listener for the
 // bookings table. Subscribed on admin login, detached on logout. The FULL bookings
-// collection is NOT subscribed — dashboard stats load it on demand (see
-// __loadAllBookings) so the one expensive read is deliberate, not automatic.
+// collection is never subscribed, so nothing in the app holds a live listener on it.
 window.__subscribeAdminBookings = function(on){
   if(window.__unsubLog){ window.__unsubLog(); window.__unsubLog = null; window.STATE.movieLog = []; }
   if(!on){
     if(window.__unsubDateBk){ window.__unsubDateBk(); window.__unsubDateBk = null; }
     window.STATE.dateBookings = [];
-    window.STATE.stats = null;
     return;
   }
   // Screening change-log (history of movies set by admin) — admin panel only.
@@ -728,15 +721,6 @@ window.__subscribeDateBookings = function(date){
       window.STATE.dateBookings = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       if(typeof render === 'function') render();
     }, err => { console.warn('date bookings listener:', err.code); });
-};
-
-// One-time full read of the bookings collection for the dashboard stats (busiest
-// day, first booking, most popular movie, totals). Run ONLY when the admin clicks
-// "Load stats" — this is the single expensive read in the app, so it is a
-// deliberate on-demand action, never a standing listener that re-fires on reconnect.
-window.__loadAllBookings = async function(){
-  const snap = await getDocs(collection(db, 'bookings'));
-  return snap.docs.map(d => ({ ...d.data(), id: d.id }));
 };
 
 // Real-time movie config listener — the SINGLE current movie (config/movie).
@@ -986,9 +970,6 @@ let STATE = {
   // dateBookings: per-seat reservation docs for the ONE date the admin bookings
   // table is filtered to (admin-only, scoped live listener).
   dateBookings: [],
-  // stats: dashboard stats computed from a one-time full read, loaded on demand
-  // via the "Load stats" button. null until loaded.
-  stats: null,
   movieLog: []   // append-only history of movies the admin has set, with timestamps
 };
 // Expose the same object to window so the Firebase module listeners
@@ -1623,74 +1604,6 @@ function downloadTicket(ticketNo){
 }
 
 /* ---------- ADMIN VIEW ---------- */
-// The stat helpers below operate on a supplied bookings array (the one-time full
-// read loaded by "Load stats"), so they never assume a standing whole-collection
-// listener.
-// Busiest show day across all bookings. byTickets=true counts distinct bookings
-// (a multi-seat booking = 1); byTickets=false counts seats sold.
-function busiestBookingDay(bookings, byTickets = true){
-  const counts = {}, seen = new Set();
-  bookings.forEach(r=>{
-    if(byTickets){ const k = r.showDate + '|' + r.ticketNo; if(seen.has(k)) return; seen.add(k); }
-    counts[r.showDate] = (counts[r.showDate] || 0) + 1;
-  });
-  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
-  return top ? { day: top[0], count: top[1] } : null;
-}
-function fmtDayKey(key){
-  if(!key) return '—';
-  const [y,m,d] = key.split('-').map(Number);
-  const dt = new Date(y, m-1, d);
-  return `${DAY_NAMES[dt.getDay()]}, ${d} ${MONTH_NAMES[dt.getMonth()]} ${y}`;
-}
-// Earliest booking ever made. Uses the sortable createdAt timestamp, falling
-// back to parsing the human bookedAt string for any older records.
-function firstBooking(bookings){
-  const bs = bookings;
-  if(!bs.length) return null;
-  const keyOf = r => (typeof r.createdAt === 'number' ? r.createdAt : (Date.parse(r.bookedAt) || Infinity));
-  let first = null, min = Infinity;
-  bs.forEach(r=>{ const k = keyOf(r); if(k < min){ min = k; first = r; } });
-  return first;
-}
-// Most-booked movie (by the title stored on each booking). byTickets=true counts
-// distinct bookings; false counts seats.
-function popularMovie(bookings, byTickets = true){
-  const counts = {}, seen = new Set();
-  bookings.forEach(r=>{
-    const m = (r.movie || '').trim();
-    if(!m) return;                                     // ignore bookings with no movie recorded
-    if(byTickets){ if(seen.has(r.ticketNo)) return; seen.add(r.ticketNo); }
-    counts[m] = (counts[m] || 0) + 1;
-  });
-  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
-  return top ? { movie: top[0], count: top[1] } : null;
-}
-
-// Dashboard stats are the only thing needing ALL bookings, so they're loaded on
-// demand (one full read) rather than via a standing listener. Results are cached
-// in STATE.stats; the button re-runs it to refresh.
-async function loadAdminStats(){
-  const btn = document.getElementById('loadStatsBtn');
-  if(btn){ btn.disabled = true; btn.textContent = 'Loading…'; }
-  try {
-    const all = await window.__loadAllBookings();
-    STATE.stats = {
-      busiest:      busiestBookingDay(all, true),
-      totalTickets: new Set(all.map(r=>r.ticketNo)).size,
-      first:        firstBooking(all),
-      popular:      popularMovie(all, true),
-      seats:        all.length,
-      loadedAt:     new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})
-    };
-    render();
-  } catch(err){
-    if(btn){ btn.disabled = false; btn.textContent = 'Load stats'; }
-    alert('Could not load stats: ' + (err.code || err.message));
-  }
-}
-window.loadAdminStats = loadAdminStats;
-
 function renderAdmin(){
   const movie = STATE.movie;
   let html = `<div class="admin-header-bar">
@@ -1701,44 +1614,6 @@ function renderAdmin(){
     </div>
   </div>`;
   html += `<div class="admin-grid">`;
-
-  // Booking stats — loaded on demand (one full read) to keep day-to-day reads tiny.
-  const st = STATE.stats;
-  html += `<div class="panel"><h3>Booking Stats</h3>`;
-  if(!st){
-    html += `<p class="note" style="margin-bottom:12px;">Dashboard stats scan every booking, so they load on demand to keep read costs low.</p>
-      <button class="btn" id="loadStatsBtn" style="width:auto;padding:8px 20px;">Load stats</button>
-    </div>`;
-  } else {
-    const busyT = st.busiest, f = st.first, pm = st.popular;
-    html += `<div class="stat-tiles">
-      <div class="stat-tile">
-        <div class="stat-label">Busiest day</div>
-        <div class="stat-value">${busyT ? fmtDayKey(busyT.day) : '—'}</div>
-        <div class="stat-sub">${busyT ? busyT.count + ' booking' + (busyT.count>1?'s':'') : 'No bookings yet'}</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Total bookings</div>
-        <div class="stat-value">${st.totalTickets}</div>
-        <div class="stat-sub">${st.totalTickets===1?'1 booking':st.totalTickets+' bookings'} · ${st.seats} seats</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">First booking made</div>
-        <div class="stat-value">${f ? escapeHtml(f.bookedAt || fmtDayKey(f.showDate)) : '—'}</div>
-        <div class="stat-sub">${f ? escapeHtml([f.ticketNo, f.name].filter(Boolean).join(' · ')) : 'No bookings yet'}</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Most popular movie</div>
-        <div class="stat-value">${pm ? escapeHtml(pm.movie) : '—'}</div>
-        <div class="stat-sub">${pm ? pm.count + ' booking' + (pm.count>1?'s':'') : 'No bookings yet'}</div>
-      </div>
-    </div>
-    <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-      <button class="btn secondary" id="loadStatsBtn" style="width:auto;padding:6px 16px;font-size:.75rem;">Refresh</button>
-      <span class="note">As of ${st.loadedAt}</span>
-    </div>
-  </div>`;
-  }
 
   // Movie management
   html += `<div class="panel">
@@ -1872,11 +1747,6 @@ function attachHandlers(){
       syncDateBookingsSub();   // re-scope the live listener to the new date
       render();
     });
-  }
-  // admin: load/refresh dashboard stats (one-time full read, on demand)
-  const loadStatsBtn = document.getElementById('loadStatsBtn');
-  if(loadStatsBtn){
-    loadStatsBtn.addEventListener('click', loadAdminStats);
   }
 
   // category select

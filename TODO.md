@@ -22,9 +22,9 @@
 
 - [x] **Admin read-scoping** — the admin panel no longer live-subscribes the whole
   `bookings` collection (~28k docs on every open/reconnect). The bookings table
-  reads only the selected date (`where('showDate','==',date)`); the dashboard stats
-  load on demand via a "Load stats" button (one full read, cached in memory).
-  `movieLog` is also admin-only now (was being read by every public visitor).
+  reads only the selected date (`where('showDate','==',date)`). The whole-collection
+  dashboard stats were removed entirely (they were the one feature that needed every
+  booking). `movieLog` is also admin-only now (was being read by every public visitor).
 
 ## Security note
 - User self-cancel (by ticket number) requires **public deletes** on `bookings`
