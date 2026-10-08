@@ -643,7 +643,7 @@ footer{
 import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc,
          onSnapshot, addDoc, deleteDoc, setDoc,
-         writeBatch, query, where, getDocs, getDoc, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+         writeBatch, query, where, orderBy, limit, getDocs, getDoc, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword,
          signOut, onAuthStateChanged }                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
@@ -702,11 +702,15 @@ window.__subscribeAdminBookings = function(on){
     window.STATE.dateBookings = [];
     return;
   }
-  // Screening change-log (history of movies set by admin) — admin panel only.
-  window.__unsubLog = onSnapshot(collection(db, 'movieLog'), snap => {
-    window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-    if(typeof render === 'function') render();
-  }, err => { console.warn('movieLog unavailable (add Firestore rules for it):', err.code); });
+  // Screening change-log (history of movies set by admin) — admin panel only,
+  // and capped to the latest 25 so this read is bounded no matter how long the
+  // history grows.
+  window.__unsubLog = onSnapshot(
+    query(collection(db, 'movieLog'), orderBy('savedAt', 'desc'), limit(25)),
+    snap => {
+      window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      if(typeof render === 'function') render();
+    }, err => { console.warn('movieLog unavailable (add Firestore rules for it):', err.code); });
   // Bookings table — live, but scoped to the current filter date.
   if(typeof window.__syncDateBookingsSub === 'function') window.__syncDateBookingsSub();
 };
@@ -984,8 +988,14 @@ async function fbSaveMovie(movie){
   await setDoc(doc(window.__db, 'config', 'movie'), movie);
   // Also append to the screening change-log so there's a permanent record of
   // every movie that was set and when (the config doc itself is overwritten).
+  // Store ONLY the small text fields — never the poster, which can be a large
+  // base64 data URI that would bloat every log doc (and the admin read of them).
   if(movie.title){
-    await addDoc(collection(window.__db, 'movieLog'), { ...movie, savedAt: new Date().toISOString() });
+    await addDoc(collection(window.__db, 'movieLog'), {
+      title: movie.title, genre: movie.genre, language: movie.language,
+      director: movie.director, duration: movie.duration,
+      savedAt: new Date().toISOString()
+    });
   }
 }
 // A reservation's identity in this domain is the SHOW (date + slot) + the SEAT.
@@ -1035,10 +1045,14 @@ async function fbCancelBooking(ticketNo){
     batch.delete(doc(window.__db, 'weekLocks', `${weekStartKey(f.showDate)}_${f.mobile}`));
   }
   // Release the seats in the per-show occupancy doc so the map updates live.
+  // Use set+merge (not update) so it also works for bookings made before the
+  // occupancy model existed, whose occupancy doc may not exist yet — an update()
+  // on a missing doc would reject the whole batch and make the booking
+  // un-cancellable.
   if(f && f.showDate && f.slot){
-    const upd = {};
-    rs.forEach(r => { upd['seats.'+r.seat] = deleteField(); });
-    batch.update(doc(window.__db, 'occupancy', `${f.showDate}_${f.slot}`), upd);
+    const seats = {};
+    rs.forEach(r => { seats[r.seat] = deleteField(); });
+    batch.set(doc(window.__db, 'occupancy', `${f.showDate}_${f.slot}`), { seats }, { merge:true });
   }
   await batch.commit();
 }
@@ -1662,8 +1676,8 @@ function renderAdmin(){
 
   // Screening log — permanent history of every movie the admin has set.
   const log = (STATE.movieLog||[]).slice().sort((a,b)=>(b.savedAt||'').localeCompare(a.savedAt||''));
-  html += `<div class="panel"><h3>Screening Log (${log.length})</h3>
-    <p class="note" style="margin-bottom:12px;">A record of every movie set via this panel, newest first.</p>`;
+  html += `<div class="panel"><h3>Screening Log</h3>
+    <p class="note" style="margin-bottom:12px;">The ${log.length} most recent movies set via this panel, newest first.</p>`;
   if(log.length===0){
     html += `<div class="empty-state">No movies logged yet. Saving a movie above adds an entry here.</div>`;
   } else {
@@ -1884,10 +1898,22 @@ function attachHandlers(){
     posterFile.addEventListener('change', (e)=>{
       const file = e.target.files[0];
       if(!file) return;
+      // An uploaded image is embedded in config/movie as a base64 data URI, which
+      // (a) must stay under Firestore's 1 MB document limit and (b) is re-downloaded
+      // by EVERY visitor on every page load. Base64 inflates ~33%, so cap the source
+      // at ~300 KB and tell the admin to use a hosted image URL for anything bigger.
+      if(file.size > 300 * 1024){
+        alert('That image is ' + Math.round(file.size/1024) + ' KB. Please use an image '
+            + 'under 300 KB, or paste a hosted image URL in the "Poster Image URL" field '
+            + 'instead — large uploads bloat the database and slow down every visitor.');
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = async ()=>{
         STATE.movie.poster = reader.result;
-        try { await fbSaveMovie(STATE.movie); } catch(e){ console.error(e); }
+        try { await fbSaveMovie(STATE.movie); }
+        catch(err){ alert('Could not save poster: ' + (err.code || err.message)); }
         render();
       };
       reader.readAsDataURL(file);

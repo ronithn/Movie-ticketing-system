@@ -26,6 +26,30 @@
   dashboard stats were removed entirely (they were the one feature that needed every
   booking). `movieLog` is also admin-only now (was being read by every public visitor).
 
+- [x] **Cancel works for pre-occupancy bookings** — cancel freed the occupancy doc
+  with `update()`, which rejects the whole batch if that doc doesn't exist (true for
+  every booking made before the occupancy model). Switched to `set(..., {merge:true})`
+  + `deleteField()`, which is safe whether or not the doc exists.
+- [x] **Slimmer, capped screening log** — `movieLog` entries no longer store the
+  poster (could be a ~1 MB base64 image); only the small text fields are logged. The
+  admin read is capped to the latest 25 (`orderBy('savedAt','desc'), limit(25)`), so
+  it's bounded no matter how long the history grows.
+- [x] **Poster upload guard** — uploads over 300 KB are rejected with a prompt to use
+  a hosted URL, preventing >1 MB `config/movie` writes and large per-visitor reads.
+
+## Bill protection (DO THIS — config, not code)
+The data model is public-read AND public-write (the backend-less self-cancel
+trade-off), so a malicious/scripted client with the public config can still run up
+reads/writes no matter how efficient the app is. Code changes cannot stop that.
+Add the guards Firebase provides:
+- [ ] **Billing budget + alert** in Google Cloud (Billing → Budgets & alerts) so a
+  runaway is capped/alerted early. Optionally a Cloud Function kill-switch that
+  disables billing at a threshold.
+- [ ] **Firebase App Check** (reCAPTCHA v3/Enterprise) so only the real app can call
+  Firestore — the actual defense against someone hammering the DB with the public key.
+- [ ] (consider) **hosted posters** (Firebase Storage/CDN) instead of base64 in
+  `config/movie`, so the current movie doc stays tiny for every public read.
+
 ## Security note
 - User self-cancel (by ticket number) requires **public deletes** on `bookings`
   and `weekLocks`. This means anyone who knows a ticket number can cancel that
