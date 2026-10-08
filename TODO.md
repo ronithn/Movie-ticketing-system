@@ -20,6 +20,12 @@
   collection is subscribed only while an admin is signed in. **Requires the new
   `occupancy` rule to be published (see below).**
 
+- [x] **Admin read-scoping** — the admin panel no longer live-subscribes the whole
+  `bookings` collection (~28k docs on every open/reconnect). The bookings table
+  reads only the selected date (`where('showDate','==',date)`); the dashboard stats
+  load on demand via a "Load stats" button (one full read, cached in memory).
+  `movieLog` is also admin-only now (was being read by every public visitor).
+
 ## Security note
 - User self-cancel (by ticket number) requires **public deletes** on `bookings`
   and `weekLocks`. This means anyone who knows a ticket number can cancel that

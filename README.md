@@ -112,8 +112,13 @@ multiplied into tens of millions of reads a week. Instead the public seat map
 subscribes to a single `occupancy/{date}_{slot}` document for the show being
 viewed — **one read per show**. Each booking writes its seats into that doc in the
 same atomic batch that creates the seat docs; each cancellation removes them with
-`deleteField()`. The full `bookings` collection is subscribed only while an admin
-is signed in (for the bookings table and dashboard stats).
+`deleteField()`.
+
+The admin panel is read-scoped too: the bookings table subscribes only to the
+**selected date** (`where('showDate','==',date)`), and the dashboard stats — the
+only feature that needs every booking — are loaded **on demand** via a "Load
+stats" button (a single full read), not a standing listener. So nothing in the
+app ever holds a live listener on the whole `bookings` collection.
 
 **Security rules.** The app depends on rules that let the public create bookings
 and locks (validated) while restricting overwrites, cancels, and movie edits to

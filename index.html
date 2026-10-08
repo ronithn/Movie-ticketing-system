@@ -676,8 +676,8 @@ window.__firebaseReady = true;
 onAuthStateChanged(auth, user => {
   window.__adminUser = user || null;
   if(typeof updateAdminBtn === 'function') updateAdminBtn();
-  // Load the full bookings collection only while an admin is signed in; detach it
-  // (and clear STATE.bookings) on logout so ordinary visitors never download it.
+  // Admin-only data (movieLog + the per-date bookings listener) attaches on login
+  // and detaches on logout, so ordinary visitors never download any of it.
   if(typeof window.__subscribeAdminBookings === 'function') window.__subscribeAdminBookings(!!user);
   if(!user && typeof currentView !== 'undefined' && currentView === 'admin'){
     switchView('booking');
@@ -697,24 +697,46 @@ window.__subscribeOccupancy = function(showKey, slot){
   }, err => { console.warn('occupancy listener:', err.code); });
 };
 
-// Admin only: the full bookings collection (one doc per seat) for the bookings
-// table + stats, and the screening change-log. Both are admin-only features, so
-// they're subscribed on admin login and detached on logout — ordinary visitors
-// never download them.
+// Admin only: the screening change-log and the per-date bookings listener for the
+// bookings table. Subscribed on admin login, detached on logout. The FULL bookings
+// collection is NOT subscribed — dashboard stats load it on demand (see
+// __loadAllBookings) so the one expensive read is deliberate, not automatic.
 window.__subscribeAdminBookings = function(on){
-  if(window.__unsubAdm){ window.__unsubAdm(); window.__unsubAdm = null; window.STATE.bookings = []; }
   if(window.__unsubLog){ window.__unsubLog(); window.__unsubLog = null; window.STATE.movieLog = []; }
-  if(on){
-    window.__unsubAdm = onSnapshot(collection(db, 'bookings'), snap => {
-      window.STATE.bookings = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-      if(typeof render === 'function') render();
-    }, err => { console.warn('admin bookings listener:', err.code); });
-    // Screening change-log (history of movies set by admin) — admin panel only.
-    window.__unsubLog = onSnapshot(collection(db, 'movieLog'), snap => {
-      window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-      if(typeof render === 'function') render();
-    }, err => { console.warn('movieLog unavailable (add Firestore rules for it):', err.code); });
+  if(!on){
+    if(window.__unsubDateBk){ window.__unsubDateBk(); window.__unsubDateBk = null; }
+    window.STATE.dateBookings = [];
+    window.STATE.stats = null;
+    return;
   }
+  // Screening change-log (history of movies set by admin) — admin panel only.
+  window.__unsubLog = onSnapshot(collection(db, 'movieLog'), snap => {
+    window.STATE.movieLog = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    if(typeof render === 'function') render();
+  }, err => { console.warn('movieLog unavailable (add Firestore rules for it):', err.code); });
+  // Bookings table — live, but scoped to the current filter date.
+  if(typeof window.__syncDateBookingsSub === 'function') window.__syncDateBookingsSub();
+};
+
+// Live listener scoped to ONE show date (the admin bookings table). Reads only
+// that date's seat docs (a few hundred at most) instead of the whole collection.
+window.__subscribeDateBookings = function(date){
+  if(window.__unsubDateBk) window.__unsubDateBk();
+  window.__unsubDateBk = onSnapshot(
+    query(collection(db, 'bookings'), where('showDate', '==', date)),
+    snap => {
+      window.STATE.dateBookings = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      if(typeof render === 'function') render();
+    }, err => { console.warn('date bookings listener:', err.code); });
+};
+
+// One-time full read of the bookings collection for the dashboard stats (busiest
+// day, first booking, most popular movie, totals). Run ONLY when the admin clicks
+// "Load stats" — this is the single expensive read in the app, so it is a
+// deliberate on-demand action, never a standing listener that re-fires on reconnect.
+window.__loadAllBookings = async function(){
+  const snap = await getDocs(collection(db, 'bookings'));
+  return snap.docs.map(d => ({ ...d.data(), id: d.id }));
 };
 
 // Real-time movie config listener — the SINGLE current movie (config/movie).
@@ -961,14 +983,17 @@ let STATE = {
   // Read from a single occupancy/{date}_{slot} doc so the public seat map costs
   // one read per show instead of downloading the whole bookings collection.
   occupancy: {},
-  // bookings: full per-seat reservation docs. Only populated for the admin
-  // (subscribed on login) — used by the bookings table and dashboard stats.
-  bookings: [],
+  // dateBookings: per-seat reservation docs for the ONE date the admin bookings
+  // table is filtered to (admin-only, scoped live listener).
+  dateBookings: [],
+  // stats: dashboard stats computed from a one-time full read, loaded on demand
+  // via the "Load stats" button. null until loaded.
+  stats: null,
   movieLog: []   // append-only history of movies the admin has set, with timestamps
 };
 // Expose the same object to window so the Firebase module listeners
-// (which assign to window.STATE.bookings / window.STATE.movie) update the
-// very object the render() code reads.
+// (which assign to window.STATE.occupancy / .movie / .dateBookings etc.) update
+// the very object the render() code reads.
 window.STATE = STATE;
 function saveState(){} // no-op — Firebase handles all persistence
 
@@ -1042,7 +1067,7 @@ let selectedCategory = null;
 let selectedSeats = [];
 
 /* ---------- HELPERS ---------- */
-// STATE.bookings is a flat list of per-seat reservation docs, each of the form
+// A reservation doc is a per-seat record of the form
 // { id, showDate, slot, category, seat, ticketNo, name, mobile, ... }.
 function seatId(cat, row, n){ return cat+'-'+row+n; }
 function seatLabel(sid){
@@ -1058,6 +1083,15 @@ function syncOccupancySub(){
 }
 window.__syncOccupancySub = syncOccupancySub;
 
+// (Re)point the admin bookings-table listener at the date the table is filtered
+// to. Called on admin login and whenever the admin changes the date filter.
+function syncDateBookingsSub(){
+  if(typeof window.__subscribeDateBookings === 'function'){
+    window.__subscribeDateBookings(window._adminDateFilter || dateKey(selectedDate));
+  }
+}
+window.__syncDateBookingsSub = syncDateBookingsSub;
+
 // Seat availability for the selected show comes from STATE.occupancy — the single
 // occupancy/{date}_{slot} doc the seat map subscribes to — not from the (admin-only)
 // full bookings list.
@@ -1070,9 +1104,11 @@ function bookedCountFor(catKey){
   return Object.keys(occ).filter(sid => sid.startsWith(prefix)).length;
 }
 // Re-assemble the per-seat reservations of one ticket back into a single
-// booking object (used by the ticket view and PDF).
+// booking object (used by the ticket view and PDF). Searches whatever reservations
+// are already in memory (the admin's current-date list); public callers fall back
+// to fetchBookingByTicketNo, which queries Firestore directly.
 function bookingFromTicketNo(ticketNo){
-  const rs = STATE.bookings.filter(r => r.ticketNo === ticketNo);
+  const rs = (STATE.dateBookings || []).filter(r => r.ticketNo === ticketNo);
   if(!rs.length) return null;
   const f = rs[0];
   return {
@@ -1587,11 +1623,14 @@ function downloadTicket(ticketNo){
 }
 
 /* ---------- ADMIN VIEW ---------- */
+// The stat helpers below operate on a supplied bookings array (the one-time full
+// read loaded by "Load stats"), so they never assume a standing whole-collection
+// listener.
 // Busiest show day across all bookings. byTickets=true counts distinct bookings
 // (a multi-seat booking = 1); byTickets=false counts seats sold.
-function busiestBookingDay(byTickets = true){
+function busiestBookingDay(bookings, byTickets = true){
   const counts = {}, seen = new Set();
-  STATE.bookings.forEach(r=>{
+  bookings.forEach(r=>{
     if(byTickets){ const k = r.showDate + '|' + r.ticketNo; if(seen.has(k)) return; seen.add(k); }
     counts[r.showDate] = (counts[r.showDate] || 0) + 1;
   });
@@ -1606,8 +1645,8 @@ function fmtDayKey(key){
 }
 // Earliest booking ever made. Uses the sortable createdAt timestamp, falling
 // back to parsing the human bookedAt string for any older records.
-function firstBooking(){
-  const bs = STATE.bookings;
+function firstBooking(bookings){
+  const bs = bookings;
   if(!bs.length) return null;
   const keyOf = r => (typeof r.createdAt === 'number' ? r.createdAt : (Date.parse(r.bookedAt) || Infinity));
   let first = null, min = Infinity;
@@ -1616,9 +1655,9 @@ function firstBooking(){
 }
 // Most-booked movie (by the title stored on each booking). byTickets=true counts
 // distinct bookings; false counts seats.
-function popularMovie(byTickets = true){
+function popularMovie(bookings, byTickets = true){
   const counts = {}, seen = new Set();
-  STATE.bookings.forEach(r=>{
+  bookings.forEach(r=>{
     const m = (r.movie || '').trim();
     if(!m) return;                                     // ignore bookings with no movie recorded
     if(byTickets){ if(seen.has(r.ticketNo)) return; seen.add(r.ticketNo); }
@@ -1627,6 +1666,30 @@ function popularMovie(byTickets = true){
   const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
   return top ? { movie: top[0], count: top[1] } : null;
 }
+
+// Dashboard stats are the only thing needing ALL bookings, so they're loaded on
+// demand (one full read) rather than via a standing listener. Results are cached
+// in STATE.stats; the button re-runs it to refresh.
+async function loadAdminStats(){
+  const btn = document.getElementById('loadStatsBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const all = await window.__loadAllBookings();
+    STATE.stats = {
+      busiest:      busiestBookingDay(all, true),
+      totalTickets: new Set(all.map(r=>r.ticketNo)).size,
+      first:        firstBooking(all),
+      popular:      popularMovie(all, true),
+      seats:        all.length,
+      loadedAt:     new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})
+    };
+    render();
+  } catch(err){
+    if(btn){ btn.disabled = false; btn.textContent = 'Load stats'; }
+    alert('Could not load stats: ' + (err.code || err.message));
+  }
+}
+window.loadAdminStats = loadAdminStats;
 
 function renderAdmin(){
   const movie = STATE.movie;
@@ -1639,11 +1702,16 @@ function renderAdmin(){
   </div>`;
   html += `<div class="admin-grid">`;
 
-  // Booking stats — bookings (tickets) only
-  const busyT = busiestBookingDay(true);
-  const totalTickets = new Set(STATE.bookings.map(r=>r.ticketNo)).size;
-  html += `<div class="panel"><h3>Booking Stats</h3>
-    <div class="stat-tiles">
+  // Booking stats — loaded on demand (one full read) to keep day-to-day reads tiny.
+  const st = STATE.stats;
+  html += `<div class="panel"><h3>Booking Stats</h3>`;
+  if(!st){
+    html += `<p class="note" style="margin-bottom:12px;">Dashboard stats scan every booking, so they load on demand to keep read costs low.</p>
+      <button class="btn" id="loadStatsBtn" style="width:auto;padding:8px 20px;">Load stats</button>
+    </div>`;
+  } else {
+    const busyT = st.busiest, f = st.first, pm = st.popular;
+    html += `<div class="stat-tiles">
       <div class="stat-tile">
         <div class="stat-label">Busiest day</div>
         <div class="stat-value">${busyT ? fmtDayKey(busyT.day) : '—'}</div>
@@ -1651,23 +1719,26 @@ function renderAdmin(){
       </div>
       <div class="stat-tile">
         <div class="stat-label">Total bookings</div>
-        <div class="stat-value">${totalTickets}</div>
-        <div class="stat-sub">${totalTickets===1?'1 booking':totalTickets+' bookings'}</div>
+        <div class="stat-value">${st.totalTickets}</div>
+        <div class="stat-sub">${st.totalTickets===1?'1 booking':st.totalTickets+' bookings'} · ${st.seats} seats</div>
       </div>
-      ${(()=>{ const f = firstBooking(); return `
       <div class="stat-tile">
         <div class="stat-label">First booking made</div>
         <div class="stat-value">${f ? escapeHtml(f.bookedAt || fmtDayKey(f.showDate)) : '—'}</div>
         <div class="stat-sub">${f ? escapeHtml([f.ticketNo, f.name].filter(Boolean).join(' · ')) : 'No bookings yet'}</div>
-      </div>`; })()}
-      ${(()=>{ const pm = popularMovie(true); return `
+      </div>
       <div class="stat-tile">
         <div class="stat-label">Most popular movie</div>
         <div class="stat-value">${pm ? escapeHtml(pm.movie) : '—'}</div>
         <div class="stat-sub">${pm ? pm.count + ' booking' + (pm.count>1?'s':'') : 'No bookings yet'}</div>
-      </div>`; })()}
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+      <button class="btn secondary" id="loadStatsBtn" style="width:auto;padding:6px 16px;font-size:.75rem;">Refresh</button>
+      <span class="note">As of ${st.loadedAt}</span>
     </div>
   </div>`;
+  }
 
   // Movie management
   html += `<div class="panel">
@@ -1733,8 +1804,9 @@ function renderAdmin(){
   html += `</div>`;
 
   // Bookings table with date filter — group per-seat reservations into tickets.
+  // Served by a live listener scoped to this one date (not the whole collection).
   const filterDate = window._adminDateFilter || dateKey(selectedDate);
-  const reservations = STATE.bookings.filter(r=>r.showDate===filterDate);
+  const reservations = (STATE.dateBookings || []).filter(r=>r.showDate===filterDate);
   const groups = {};
   reservations.forEach(r=>{ (groups[r.ticketNo] ||= []).push(r); });
   const tickets = Object.values(groups);
@@ -1797,8 +1869,14 @@ function attachHandlers(){
   if(adminDateFilter){
     adminDateFilter.addEventListener('change', ()=>{
       window._adminDateFilter = adminDateFilter.value;
+      syncDateBookingsSub();   // re-scope the live listener to the new date
       render();
     });
+  }
+  // admin: load/refresh dashboard stats (one-time full read, on demand)
+  const loadStatsBtn = document.getElementById('loadStatsBtn');
+  if(loadStatsBtn){
+    loadStatsBtn.addEventListener('click', loadAdminStats);
   }
 
   // category select
