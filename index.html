@@ -923,12 +923,12 @@ const BOOKABLE_CATS = FLAT_CATS.filter(c=>c.bookable);
 
 /* ---------- WEEKLY SCHEDULE ---------- */
 // 0=Sunday ... 6=Saturday (JS Date.getDay())
-// Thursday (4) is closed for maintenance.
+// Tuesday (2) and Thursday (4) are closed (holiday / maintenance).
 // Sunday (0) has two shows; all other open days have one evening show.
 const WEEKLY_SCHEDULE = {
   0: ['14:30', '18:30'], // Sunday
   1: ['18:30'],          // Monday
-  2: ['18:30'],          // Tuesday
+  2: [],                 // Tuesday — closed (holiday)
   3: ['18:30'],          // Wednesday
   4: [],                 // Thursday — closed for maintenance
   5: ['18:30'],          // Friday
@@ -1320,7 +1320,10 @@ function renderCalendar(){
     <div class="slot-label">${DAY_NAMES[selD.getDay()]}, ${selD.getDate()} ${MONTH_NAMES[selD.getMonth()]} ${selD.getFullYear()}</div>
     <div class="slot-btns">`;
   if(slots.length === 0){
-    html += `<span class="closed-note">Closed — Theatre maintenance day.</span>`;
+    const reason = selD.getDay() === 4 ? 'Theatre maintenance day'
+                 : selD.getDay() === 2 ? 'Holiday'
+                 : 'No shows on this day';
+    html += `<span class="closed-note">Closed — ${reason}.</span>`;
   } else {
     slots.forEach(s => {
       html += `<button class="slot-btn ${selectedSlot===s?'active':''}" data-slot="${s}">${formatSlot(s)}</button>`;
@@ -1669,7 +1672,8 @@ function renderAdmin(){
     <table><tr><th>Day</th><th>Show times</th></tr>
     ${DAY_NAMES.map((d,i)=>{
       const slots = WEEKLY_SCHEDULE[i];
-      return `<tr><td>${d}</td><td>${slots.length? slots.map(formatSlot).join(', ') : '<em>Closed for maintenance</em>'}</td></tr>`;
+      const closedLabel = i === 4 ? 'Closed for maintenance' : i === 2 ? 'Closed (holiday)' : 'Closed';
+      return `<tr><td>${d}</td><td>${slots.length? slots.map(formatSlot).join(', ') : '<em>'+closedLabel+'</em>'}</td></tr>`;
     }).join('')}
     </table>
   </div>`;

@@ -7,8 +7,9 @@ to run it. No build step is required.
 ## Features
 
 - **Weekly schedule** — a Friday → Thursday week strip with show times
-  (18:30 on Fri/Sat/Mon/Tue/Wed, an extra 14:30 show on Sunday, closed on
-  Thursday for maintenance). Seat availability is keyed by category + date + slot.
+  (18:30 on Fri/Sat/Mon/Wed, an extra 14:30 show on Sunday, closed on
+  Tuesday (holiday) and Thursday (maintenance)). Seat availability is keyed by
+  category + date + slot.
 - **Seating layout** mirroring the physical auditorium chart:
   - **OFFRs** (Officers) — 58 seats, rows M–R centre section.
   - **JCOs** (Junior Commissioned Officers) — 116 seats, left/right sections
