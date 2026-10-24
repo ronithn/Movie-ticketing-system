@@ -220,6 +220,9 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .seat.offline-reserved{ background:var(--maroon); border-color:var(--maroon-deep); color:#e8d0a0; cursor:not-allowed; }
 .seat.media-blocked{ background:#e67e22; border-color:#c0610a; color:#fff; cursor:not-allowed; }
 .seat.offline-reserved:hover, .seat.media-blocked{ box-shadow:none; }
+/* Seat-hold confirm countdown shown in the booking form. */
+.hold-timer{ background:#fdf5e3; border:1px solid #e6d2a0; color:#6b5300; border-radius:8px; padding:8px 12px; margin:0 0 14px; font-size:.85rem; }
+.hold-timer b{ font-variant-numeric:tabular-nums; }
 /* Held — another user is mid-booking (temporary, auto-expires). Not selectable. */
 .seat.held{ background:#e6c86a; border-color:#c7a23e; color:#6b5300; cursor:not-allowed; animation:heldPulse 1.3s ease-in-out infinite; }
 .seat.held:hover{ box-shadow:none; background:#e6c86a; }
@@ -1087,6 +1090,9 @@ let selectedSeats = [];
 // Booking-form field values, kept across re-renders so a live occupancy update
 // (e.g. someone else selecting a seat) never wipes what the user has typed.
 let formName = '', formMobile = '';
+// Timestamp (ms) when the current seat hold expires; drives the on-screen
+// countdown. 0 = no active hold. Re-stamped on each seat selection.
+let holdDeadline = 0;
 
 /* ---------- HELPERS ---------- */
 // A reservation doc is a per-seat record of the form
@@ -1113,6 +1119,30 @@ function showToast(msg, ms){
   window.__seatToastT = setTimeout(()=>{ t.style.opacity = '0'; }, ms || 1800);
 }
 function flashSeatLimit(){ showToast('Maximum ' + MAX_SEATS_PER_BOOKING + ' seats per booking.', 1800); }
+// Format a millisecond duration as m:ss (clamped at 0).
+function fmtMMSS(ms){
+  const s = Math.max(0, Math.ceil(ms/1000));
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+// Tick the seat-hold countdown once a second. When it hits zero the hold has
+// lapsed, so the selection is released and cleared and the user is told to retry.
+function tickHold(){
+  if(currentView !== 'booking' || selectedSeats.length === 0 || !holdDeadline) return;
+  const remaining = holdDeadline - Date.now();
+  if(remaining <= 0){
+    releaseSelectedHolds();
+    selectedSeats = [];
+    holdDeadline = 0;
+    showToast('Your seat hold expired — please select your seats again.', 2800);
+    render();
+    return;
+  }
+  const el = document.getElementById('holdCountdown');
+  if(el){
+    el.textContent = fmtMMSS(remaining);
+    el.parentElement.style.color = remaining < 30000 ? '#c0392b' : '';
+  }
+}
 // (Re)point the occupancy listener at the currently-selected show. Called on
 // every date/slot change and once the Firebase module is ready.
 function syncOccupancySub(){
@@ -1179,6 +1209,7 @@ async function fbReleaseSeats(seats){
 // Release every seat this client currently has selected (on leaving the flow).
 function releaseSelectedHolds(){
   if(selectedSeats.length) fbReleaseSeats([...selectedSeats]);
+  holdDeadline = 0;
 }
 // Remove from the local selection any seat that was just booked or is now held by
 // someone else (lost the race), and tell the user.
@@ -1187,6 +1218,7 @@ function reconcileSelection(){
   const before = selectedSeats.length;
   selectedSeats = selectedSeats.filter(s => !isBooked(s) && !isHeldByOther(s));
   if(selectedSeats.length < before) flashSeatLost();
+  if(!selectedSeats.length) holdDeadline = 0;
 }
 function flashSeatLost(){ showToast('A selected seat was just taken by someone else.', 2200); }
 // Re-assemble the per-seat reservations of one ticket back into a single
@@ -1574,7 +1606,8 @@ function renderBookingForm(cat){
       Selected seats: <b>${seatsLabel}</b> &nbsp;|&nbsp;
       Count: <b>${selectedSeats.length} / ${MAX_SEATS_PER_BOOKING}</b>
     </div>
-    <p class="note" style="margin:-4px 0 12px;">Up to ${MAX_SEATS_PER_BOOKING} seats per booking.</p>
+    <p class="note" style="margin:-4px 0 ${selectedSeats.length?'8px':'12px'};">Up to ${MAX_SEATS_PER_BOOKING} seats per booking.</p>
+    ${selectedSeats.length ? `<div class="hold-timer">&#9203; <b id="holdCountdown">${fmtMMSS(holdDeadline ? holdDeadline - Date.now() : HOLD_MS)}</b> left to confirm — your seats are held for others until then.</div>` : ''}
     <div class="field"><label>Name</label><input id="f_name" type="text" placeholder="Full name" value="${escapeHtml(formName)}"></div>
     <div class="field"><label>Mobile No.</label><input id="f_mobile" type="tel" placeholder="e.g. 9876543210" maxlength="10" pattern="[0-9]{10}" value="${escapeHtml(formMobile)}"></div>
     <button class="btn" id="confirmBtn" ${selectedSeats.length===0?'disabled':''}>Confirm &amp; Get Ticket</button>
@@ -1889,6 +1922,7 @@ function attachHandlers(){
       if(selectedSeats.includes(sid)){
         selectedSeats = selectedSeats.filter(s=>s!==sid);
         fbReleaseSeats([sid]);          // free the hold for others
+        if(!selectedSeats.length) holdDeadline = 0;   // no seats held → no countdown
       } else {
         if(isBooked(sid) || isHeldByOther(sid)){
           flashSeatLost();              // someone grabbed it between renders
@@ -1900,6 +1934,7 @@ function attachHandlers(){
         }
         selectedSeats.push(sid);
         fbHoldSeat(sid);                // hold it for others (2-min, auto-expires)
+        holdDeadline = Date.now() + HOLD_MS;   // (re)start the confirm countdown
       }
       render();
     });
@@ -1980,6 +2015,7 @@ function attachHandlers(){
         // Show the ticket as a proper view so later real-time re-renders keep it
         // on screen instead of wiping it back to the seat map.
         selectedSeats = [];   // holds for these seats were cleared in the booking batch
+        holdDeadline = 0;
         formName = ''; formMobile = '';
         currentView = 'ticket';
         render();
@@ -2152,6 +2188,7 @@ document.getElementById('cancelModal').addEventListener('click', function(e){
   if(e.target === this) closeCancelModal();
 });
 window.addEventListener('resize', fitSeats);
+setInterval(tickHold, 1000);   // drive the seat-hold confirm countdown
 // Best-effort: free any seats this client is holding if the tab is closed/hidden
 // mid-booking. (If this write doesn't land, the 2-minute hold expires anyway.)
 window.addEventListener('pagehide', ()=>{ try{ releaseSelectedHolds(); }catch(e){} });

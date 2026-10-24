@@ -52,10 +52,15 @@ Add the guards Firebase provides:
 
 - [x] **Max 4 seats per booking** — the seat picker caps selection at 4 (toast on the
   5th), the form shows `X / 4`, and the confirm handler guards defensively.
-- [x] **Seat holds (2-min)** — selecting a seat writes a temporary hold into the
-  occupancy doc (`holds: { seatId: { until, by } }`); other viewers see it amber and
-  can't select it. Holds auto-expire (ignored once `until < now`), are released on
-  deselect / leaving / booking / tab close, and are cleared in the booking batch.
+- [x] **Seat holds (2-min) + visible countdown** — selecting a seat writes a temporary
+  hold into the occupancy doc (`holds: { seatId: { until, by } }`); other viewers see
+  it amber and can't select it. The booking form shows a live "m:ss left to confirm"
+  countdown (turns red under 30s); when it hits zero the hold is released, the
+  selection cleared, and the user told to reselect. Holds auto-expire (ignored once
+  `until < now`), are released on deselect / leaving / booking / tab close, and are
+  cleared in the booking batch.
+- [x] **Form values survive live re-renders** — name/mobile are kept in state so a
+  live occupancy update (frequent now, due to holds) never wipes what's being typed.
 - [x] **Reliable real-time** — confirmed by a 2-browser concurrent test: a booking or
   hold by one user shows live for others within ~1s. Fixed the ticket screen getting
   wiped by an incoming live update (it's now a proper `'ticket'` view state).
