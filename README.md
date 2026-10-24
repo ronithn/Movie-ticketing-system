@@ -17,12 +17,18 @@ to run it. No build step is required.
   - **ORs** (Other Ranks) — 366 seats across left / tapering centre / right
     blocks, rows A–K, with continuous numbering.
   - **VIP** — 11 sofa seats shown above the map, display-only (not bookable).
-- **Booking flow** — pick a day and show time, choose a category, select seats,
-  enter name + 10-digit mobile number, and confirm.
+- **Booking flow** — pick a day and show time, choose a category, select up to
+  **4 seats**, enter name + 10-digit mobile number, and confirm.
+- **Seat holds** — selecting a seat holds it for other viewers for **2 minutes**
+  (shown amber, "being booked by someone"), so two people don't race for the same
+  seat. The hold auto-expires, so abandoned selections free up with no backend.
 - **One booking per number per week** — a mobile number may hold a single booking
   (which can include multiple seats) per Friday→Thursday week.
-- **No double-booking** — a seat can never be sold twice for the same show; this
-  is enforced atomically by the data model, not just the UI.
+- **No double-booking** — a seat can never be sold twice for the same show. This
+  is enforced by the data model: each seat is one document created once, and the
+  **create-only security rule** (`bookings … allow update: if false`) rejects the
+  second writer. ⚠️ This guarantee only holds once that rule is published — see
+  Security rules below.
 - **Tickets** — a styled on-screen ticket plus a client-side **PDF** generated
   with [jsPDF](https://github.com/parallax/jsPDF); the PDF auto-downloads on
   confirmation and can be re-downloaded or printed.

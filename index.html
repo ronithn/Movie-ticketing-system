@@ -220,6 +220,10 @@ main{max-width:1040px; margin:0 auto; padding:32px 24px;}
 .seat.offline-reserved{ background:var(--maroon); border-color:var(--maroon-deep); color:#e8d0a0; cursor:not-allowed; }
 .seat.media-blocked{ background:#e67e22; border-color:#c0610a; color:#fff; cursor:not-allowed; }
 .seat.offline-reserved:hover, .seat.media-blocked{ box-shadow:none; }
+/* Held — another user is mid-booking (temporary, auto-expires). Not selectable. */
+.seat.held{ background:#e6c86a; border-color:#c7a23e; color:#6b5300; cursor:not-allowed; animation:heldPulse 1.3s ease-in-out infinite; }
+.seat.held:hover{ box-shadow:none; background:#e6c86a; }
+@keyframes heldPulse{ 0%,100%{opacity:.95;} 50%{opacity:.6;} }
 .aisle{ width:calc(var(--seat-gap, 5px) * 2); flex:0 0 auto; }
 /* FAMILY / SINGLE group labels under the seat map (aligned to each group). */
 .group-labels{ display:flex; align-items:stretch; gap:var(--seat-gap, 5px); flex-wrap:nowrap; width:100%; margin-top:6px; }
@@ -687,7 +691,12 @@ window.__subscribeOccupancy = function(showKey, slot){
   if(window.__unsubOcc) window.__unsubOcc();
   const id = showKey + '_' + slot;
   window.__unsubOcc = onSnapshot(doc(db, 'occupancy', id), snap => {
-    window.STATE.occupancy = snap.exists() ? (snap.data().seats || {}) : {};
+    const d = snap.exists() ? snap.data() : {};
+    window.STATE.occupancy = d.seats || {};
+    window.STATE.holds = d.holds || {};
+    // Drop any of this client's selected seats that were just booked or are now
+    // held by someone else, so the UI never lets you proceed with a lost seat.
+    if(typeof reconcileSelection === 'function') reconcileSelection();
     if(typeof render === 'function') render();
   }, err => { console.warn('occupancy listener:', err.code); });
 };
@@ -809,6 +818,12 @@ if(typeof window.__syncOccupancySub === 'function') window.__syncOccupancySub();
 // Per-row highest seat number in the ORs block (from the physical chart).
 const ORS_MAX = {A:31,B:31,C:31,D:32,E:32,F:33,G:33,H:35,I:36,J:36,K:36};
 const ORS_ROWS = ['A','B','C','D','E','F','G','H','I','J','K'];
+
+// Maximum seats a single booking may hold.
+const MAX_SEATS_PER_BOOKING = 4;
+// While a user has a seat selected it is "held" (blocked for others) for this
+// long; the hold auto-expires so abandoned selections free up without a backend.
+const HOLD_MS = 2 * 60 * 1000;
 
 /* ---- Blocked ORs seats (not bookable): offline-reserved + media ---- */
 // Reserved (offline): the two lowest + two highest seats of rows A–F.
@@ -971,6 +986,11 @@ let STATE = {
   // Read from a single occupancy/{date}_{slot} doc so the public seat map costs
   // one read per show instead of downloading the whole bookings collection.
   occupancy: {},
+  // holds: seats currently being booked by someone (temporary), as
+  // { seatId: { until: <ms epoch>, by: <clientId> } }. Stored in the same
+  // occupancy doc. A hold only counts while until > now — expired holds are
+  // ignored, so abandoned selections free up with no server-side cleanup.
+  holds: {},
   // dateBookings: per-seat reservation docs for the ONE date the admin bookings
   // table is filtered to (admin-only, scoped live listener).
   dateBookings: [],
@@ -980,6 +1000,8 @@ let STATE = {
 // (which assign to window.STATE.occupancy / .movie / .dateBookings etc.) update
 // the very object the render() code reads.
 window.STATE = STATE;
+// A per-tab id so a client can tell its own holds apart from other users'.
+window.__clientId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'c'+Math.random().toString(36).slice(2);
 function saveState(){} // no-op — Firebase handles all persistence
 
 /* ---------- FIREBASE DATA HELPERS ---------- */
@@ -1019,12 +1041,14 @@ async function fbAddBooking(reservations, lock){
   if(lock) batch.set(doc(window.__db, 'weekLocks', lock.id), lock.data);
   // Mirror these seats into the per-show occupancy doc (occupancy/{date}_{slot}),
   // the one document the public seat map reads. merge:true keeps seats already
-  // booked by others. All seats of one booking share the same show.
+  // booked by others. In the same write, clear any temporary hold on these seats
+  // (the seat is now permanently booked). All seats of one booking share the show.
   if(reservations.length){
+    const { deleteField } = window.__fs;
     const f = reservations[0].data;
-    const seats = {};
-    reservations.forEach(r => { seats[r.data.seat] = r.data.ticketNo; });
-    batch.set(doc(window.__db, 'occupancy', `${f.showDate}_${f.slot}`), { seats }, { merge:true });
+    const seats = {}, holds = {};
+    reservations.forEach(r => { seats[r.data.seat] = r.data.ticketNo; holds[r.data.seat] = deleteField(); });
+    batch.set(doc(window.__db, 'occupancy', `${f.showDate}_${f.slot}`), { seats, holds }, { merge:true });
   }
   await batch.commit();
 }
@@ -1069,6 +1093,23 @@ function seatLabel(sid){
   const dash = sid.indexOf('-');
   return sid.slice(dash+1);
 }
+// Brief toast on <body> (not inside #app, so render() re-renders don't clear it).
+function showToast(msg, ms){
+  let t = document.getElementById('seatLimitToast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'seatLimitToast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);'
+      + 'background:#5c1320;color:#fff;padding:10px 18px;border-radius:8px;font-size:.85rem;'
+      + 'z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.28);opacity:0;transition:opacity .2s;pointer-events:none;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(window.__seatToastT);
+  window.__seatToastT = setTimeout(()=>{ t.style.opacity = '0'; }, ms || 1800);
+}
+function flashSeatLimit(){ showToast('Maximum ' + MAX_SEATS_PER_BOOKING + ' seats per booking.', 1800); }
 // (Re)point the occupancy listener at the currently-selected show. Called on
 // every date/slot change and once the Firebase module is ready.
 function syncOccupancySub(){
@@ -1093,11 +1134,58 @@ window.__syncDateBookingsSub = syncDateBookingsSub;
 function isBooked(seatID){
   return !!(STATE.occupancy && STATE.occupancy[seatID]);
 }
+// True if another client currently holds this seat (active, non-expired hold).
+// A client's own holds never block itself.
+function isHeldByOther(seatID){
+  const h = STATE.holds && STATE.holds[seatID];
+  return !!(h && h.until > Date.now() && h.by !== window.__clientId);
+}
 function bookedCountFor(catKey){
   const occ = STATE.occupancy || {};
   const prefix = catKey + '-';
   return Object.keys(occ).filter(sid => sid.startsWith(prefix)).length;
 }
+
+/* ---------- SEAT HOLDS (temporary, while a user is booking) ---------- */
+// Reference to the occupancy doc of the CURRENTLY selected show.
+function occDocRef(){
+  return window.__fs.doc(window.__db, 'occupancy', `${dateKey(selectedDate)}_${selectedSlot}`);
+}
+// Place/refresh a hold on `seat`, refresh this client's other active holds, and
+// opportunistically clear expired holds we can see (no extra read — piggybacked).
+async function fbHoldSeat(seat){
+  if(!window.__fs) return;
+  const { setDoc, deleteField } = window.__fs;
+  const until = Date.now() + HOLD_MS, now = Date.now();
+  const holds = { [seat]: { until, by: window.__clientId } };
+  const cur = STATE.holds || {};
+  selectedSeats.forEach(s => { if(s!==seat) holds[s] = { until, by: window.__clientId }; }); // keep my holds alive
+  Object.keys(cur).forEach(s => { if(!holds[s] && cur[s] && cur[s].until <= now) holds[s] = deleteField(); });
+  try { await setDoc(occDocRef(), { holds }, { merge:true }); }
+  catch(e){ console.warn('hold seat:', e.code || e.message); }
+}
+// Release specific seats' holds on the current show.
+async function fbReleaseSeats(seats){
+  if(!window.__fs || !seats || !seats.length) return;
+  const { setDoc, deleteField } = window.__fs;
+  const holds = {};
+  seats.forEach(s => { holds[s] = deleteField(); });
+  try { await setDoc(occDocRef(), { holds }, { merge:true }); }
+  catch(e){ console.warn('release seats:', e.code || e.message); }
+}
+// Release every seat this client currently has selected (on leaving the flow).
+function releaseSelectedHolds(){
+  if(selectedSeats.length) fbReleaseSeats([...selectedSeats]);
+}
+// Remove from the local selection any seat that was just booked or is now held by
+// someone else (lost the race), and tell the user.
+function reconcileSelection(){
+  if(!selectedSeats.length) return;
+  const before = selectedSeats.length;
+  selectedSeats = selectedSeats.filter(s => !isBooked(s) && !isHeldByOther(s));
+  if(selectedSeats.length < before) flashSeatLost();
+}
+function flashSeatLost(){ showToast('A selected seat was just taken by someone else.', 2200); }
 // Re-assemble the per-seat reservations of one ticket back into a single
 // booking object (used by the ticket view and PDF). Searches whatever reservations
 // are already in memory (the admin's current-date list); public callers fall back
@@ -1200,6 +1288,7 @@ function submitChangePwd(){}
 /* ---------- VIEW SWITCH ---------- */
 function switchView(v){
   if(v === 'admin' && !adminLoggedIn){ openAdminLogin(); return; }
+  releaseSelectedHolds();            // free any seats this client was holding
   currentView = v;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
   selectedCategory = null; selectedSeats = [];
@@ -1209,8 +1298,16 @@ function switchView(v){
 /* ---------- RENDER ROOT ---------- */
 function render(){
   const app = document.getElementById('app');
-  if(currentView === 'booking') app.innerHTML = renderBooking();
-  else app.innerHTML = renderAdmin();
+  if(currentView === 'ticket' && window._lastBooking){
+    app.innerHTML = `<div class="hero" style="padding-top:8px;">
+        <div class="eyebrow">Booking Confirmed</div>
+        <h2>Your Ticket</h2>
+      </div>` + renderTicket(window._lastBooking);
+  } else if(currentView === 'admin'){
+    app.innerHTML = renderAdmin();
+  } else {
+    app.innerHTML = renderBooking();
+  }
   attachHandlers();
   fitSeats();
 }
@@ -1414,10 +1511,11 @@ function renderBooking(){
         const reserved = isOfflineReserved(cat.key, r.label, n);
         const booked   = isBooked(sid);
         const sel      = selectedSeats.includes(sid);
+        const held     = !booked && !sel && isHeldByOther(sid);   // someone else is booking it
         const tcls = type ? ('t-'+type) : '';
-        const stateCls = media ? 'media-blocked' : reserved ? 'offline-reserved' : booked ? 'booked' : (sel ? 'selected' : '');
-        const clickable = !media && !reserved && !booked;
-        const extra = media ? ' · Media/Photographer' : reserved ? ' · Reserved (offline)' : '';
+        const stateCls = media ? 'media-blocked' : reserved ? 'offline-reserved' : booked ? 'booked' : held ? 'held' : (sel ? 'selected' : '');
+        const clickable = !media && !reserved && !booked && !held;
+        const extra = media ? ' · Media/Photographer' : reserved ? ' · Reserved (offline)' : held ? ' · Being booked by someone' : '';
         html += `<div class="seat ${tcls} ${stateCls}" ${clickable?`data-seat="${sid}"`:''} title="Row ${r.label} Seat ${n}${type?' · '+type+' member':''}${extra}">${n}</div>`;
       });
       html += `<span class="row-label">${r.label}</span></div>`;
@@ -1471,8 +1569,9 @@ function renderBookingForm(cat){
     <div class="summary">
       Show: <b>${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()} — ${formatSlot(selectedSlot)}</b> &nbsp;|&nbsp;
       Selected seats: <b>${seatsLabel}</b> &nbsp;|&nbsp;
-      Count: <b>${selectedSeats.length}</b>
+      Count: <b>${selectedSeats.length} / ${MAX_SEATS_PER_BOOKING}</b>
     </div>
+    <p class="note" style="margin:-4px 0 12px;">Up to ${MAX_SEATS_PER_BOOKING} seats per booking.</p>
     <div class="field"><label>Name</label><input id="f_name" type="text" placeholder="Full name"></div>
     <div class="field"><label>Mobile No.</label><input id="f_mobile" type="tel" placeholder="e.g. 9876543210" maxlength="10" pattern="[0-9]{10}"></div>
     <button class="btn" id="confirmBtn" ${selectedSeats.length===0?'disabled':''}>Confirm &amp; Get Ticket</button>
@@ -1738,6 +1837,7 @@ function attachHandlers(){
   // calendar date select
   document.querySelectorAll('.week-day[data-date]').forEach(el=>{
     el.addEventListener('click', ()=>{
+      releaseSelectedHolds();          // free holds on the show we're leaving
       const [y,m,d] = el.dataset.date.split('-').map(Number);
       selectedDate = new Date(y, m-1, d);
       const slots = slotsForDate(selectedDate);
@@ -1750,6 +1850,7 @@ function attachHandlers(){
   // slot buttons (booking view)
   document.querySelectorAll('.slot-btn[data-slot]').forEach(el=>{
     el.addEventListener('click', ()=>{
+      releaseSelectedHolds();          // free holds on the slot we're leaving
       selectedSlot = el.dataset.slot;
       selectedSeats = [];
       syncOccupancySub();
@@ -1770,6 +1871,7 @@ function attachHandlers(){
   // category select
   document.querySelectorAll('.cat-card').forEach(el=>{
     el.addEventListener('click', ()=>{
+      releaseSelectedHolds();          // free holds from a previous category
       selectedCategory = el.dataset.cat;
       selectedSeats = [];
       render();
@@ -1778,13 +1880,23 @@ function attachHandlers(){
 
   // seat select
   document.querySelectorAll('.seat').forEach(el=>{
-    if(!el.dataset.seat || el.classList.contains('booked')) return;   // skip blocked/reserved/media
+    if(!el.dataset.seat || el.classList.contains('booked') || el.classList.contains('held')) return;   // skip blocked/reserved/media/held
     el.addEventListener('click', ()=>{
       const sid = el.dataset.seat;
       if(selectedSeats.includes(sid)){
         selectedSeats = selectedSeats.filter(s=>s!==sid);
+        fbReleaseSeats([sid]);          // free the hold for others
       } else {
+        if(isBooked(sid) || isHeldByOther(sid)){
+          flashSeatLost();              // someone grabbed it between renders
+          return;
+        }
+        if(selectedSeats.length >= MAX_SEATS_PER_BOOKING){
+          flashSeatLimit();
+          return;   // at the cap — don't add a 5th
+        }
         selectedSeats.push(sid);
+        fbHoldSeat(sid);                // hold it for others (2-min, auto-expires)
       }
       render();
     });
@@ -1802,6 +1914,12 @@ function attachHandlers(){
       }
       if(!/^[0-9]{10}$/.test(mobile)){
         alert('Please enter a valid 10-digit mobile number.');
+        return;
+      }
+      // Seat-count guard (defensive — the seat picker already caps selection).
+      if(selectedSeats.length === 0){ alert('Please select at least one seat.'); return; }
+      if(selectedSeats.length > MAX_SEATS_PER_BOOKING){
+        alert('You can book at most ' + MAX_SEATS_PER_BOOKING + ' seats per booking.');
         return;
       }
       const taken = selectedSeats.filter(isBooked);
@@ -1850,10 +1968,11 @@ function attachHandlers(){
         // before the occupancy snapshot round-trips back.
         STATE.occupancy = STATE.occupancy || {};
         reservations.forEach(r => { STATE.occupancy[r.data.seat] = r.data.ticketNo; });
-        document.getElementById('app').innerHTML = `<div class="hero" style="padding-top:8px;">
-          <div class="eyebrow">Booking Confirmed</div>
-          <h2>Your Ticket</h2>
-        </div>` + renderTicket(booking);
+        // Show the ticket as a proper view so later real-time re-renders keep it
+        // on screen instead of wiping it back to the seat map.
+        selectedSeats = [];   // holds for these seats were cleared in the booking batch
+        currentView = 'ticket';
+        render();
         setTimeout(()=>downloadTicket(ticketNo), 600);
       } catch(err){
         // A permission error here means the atomic batch was rejected: either a
@@ -2023,6 +2142,10 @@ document.getElementById('cancelModal').addEventListener('click', function(e){
   if(e.target === this) closeCancelModal();
 });
 window.addEventListener('resize', fitSeats);
+// Best-effort: free any seats this client is holding if the tab is closed/hidden
+// mid-booking. (If this write doesn't land, the 2-minute hold expires anyway.)
+window.addEventListener('pagehide', ()=>{ try{ releaseSelectedHolds(); }catch(e){} });
+window.addEventListener('beforeunload', ()=>{ try{ releaseSelectedHolds(); }catch(e){} });
 render();
 </script>
 </body>

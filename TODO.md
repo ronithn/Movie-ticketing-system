@@ -50,6 +50,21 @@ Add the guards Firebase provides:
 - [ ] (consider) **hosted posters** (Firebase Storage/CDN) instead of base64 in
   `config/movie`, so the current movie doc stays tiny for every public read.
 
+- [x] **Max 4 seats per booking** — the seat picker caps selection at 4 (toast on the
+  5th), the form shows `X / 4`, and the confirm handler guards defensively.
+- [x] **Seat holds (2-min)** — selecting a seat writes a temporary hold into the
+  occupancy doc (`holds: { seatId: { until, by } }`); other viewers see it amber and
+  can't select it. Holds auto-expire (ignored once `until < now`), are released on
+  deselect / leaving / booking / tab close, and are cleared in the booking batch.
+- [x] **Reliable real-time** — confirmed by a 2-browser concurrent test: a booking or
+  hold by one user shows live for others within ~1s. Fixed the ticket screen getting
+  wiped by an incoming live update (it's now a proper `'ticket'` view state).
+- [ ] **⚠️ PUBLISH the create-only `bookings` rule** (`allow update: if false`, below).
+  A 2-browser concurrent test proved that with the *currently published* rule
+  (`allow update: if true`) **the same seat CAN be booked by two people**. The app
+  cannot prevent this from the client — the create-only guard lives in the rule.
+  Until this is published, double-booking is possible.
+
 ## Security note
 - User self-cancel (by ticket number) requires **public deletes** on `bookings`
   and `weekLocks`. This means anyone who knows a ticket number can cancel that
@@ -78,7 +93,9 @@ service cloud.firestore {
     match /bookings/{seatId} {
       allow read: if true;                       // needed for cancel-by-ticket lookup
       allow create: if true;                     // create-only ⇒ no double-booking
-      allow update, delete: if true;             // public self-cancel (accepted trade-off)
+      allow update: if false;                    // CRITICAL: never overwrite an existing
+                                                 // seat doc, or two people get the same seat
+      allow delete: if true;                     // public self-cancel (accepted trade-off)
     }
 
     match /weekLocks/{lockId} {
