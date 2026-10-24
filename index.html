@@ -1084,6 +1084,9 @@ async function fbCancelBooking(ticketNo){
 let currentView = 'booking';
 let selectedCategory = null;
 let selectedSeats = [];
+// Booking-form field values, kept across re-renders so a live occupancy update
+// (e.g. someone else selecting a seat) never wipes what the user has typed.
+let formName = '', formMobile = '';
 
 /* ---------- HELPERS ---------- */
 // A reservation doc is a per-seat record of the form
@@ -1291,7 +1294,7 @@ function switchView(v){
   releaseSelectedHolds();            // free any seats this client was holding
   currentView = v;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
-  selectedCategory = null; selectedSeats = [];
+  selectedCategory = null; selectedSeats = []; formName = ''; formMobile = '';
   render();
 }
 
@@ -1572,8 +1575,8 @@ function renderBookingForm(cat){
       Count: <b>${selectedSeats.length} / ${MAX_SEATS_PER_BOOKING}</b>
     </div>
     <p class="note" style="margin:-4px 0 12px;">Up to ${MAX_SEATS_PER_BOOKING} seats per booking.</p>
-    <div class="field"><label>Name</label><input id="f_name" type="text" placeholder="Full name"></div>
-    <div class="field"><label>Mobile No.</label><input id="f_mobile" type="tel" placeholder="e.g. 9876543210" maxlength="10" pattern="[0-9]{10}"></div>
+    <div class="field"><label>Name</label><input id="f_name" type="text" placeholder="Full name" value="${escapeHtml(formName)}"></div>
+    <div class="field"><label>Mobile No.</label><input id="f_mobile" type="tel" placeholder="e.g. 9876543210" maxlength="10" pattern="[0-9]{10}" value="${escapeHtml(formMobile)}"></div>
     <button class="btn" id="confirmBtn" ${selectedSeats.length===0?'disabled':''}>Confirm &amp; Get Ticket</button>
   </div>`;
 }
@@ -1902,6 +1905,12 @@ function attachHandlers(){
     });
   });
 
+  // keep typed name/mobile across re-renders (live updates must not wipe them)
+  const fName = document.getElementById('f_name');
+  const fMobile = document.getElementById('f_mobile');
+  if(fName)   fName.addEventListener('input', e=>{ formName = e.target.value; });
+  if(fMobile) fMobile.addEventListener('input', e=>{ formMobile = e.target.value; });
+
   // confirm booking
   const confirmBtn = document.getElementById('confirmBtn');
   if(confirmBtn){
@@ -1971,6 +1980,7 @@ function attachHandlers(){
         // Show the ticket as a proper view so later real-time re-renders keep it
         // on screen instead of wiping it back to the seat map.
         selectedSeats = [];   // holds for these seats were cleared in the booking batch
+        formName = ''; formMobile = '';
         currentView = 'ticket';
         render();
         setTimeout(()=>downloadTicket(ticketNo), 600);
